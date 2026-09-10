@@ -1,0 +1,243 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Admin = custom claim `admin: true` (set via Admin SDK) OR membership in
+    // the Firestore `admin/{uid}` registry, which lets the first admin be
+    // bootstrapped manually from the Firebase Console (Console writes bypass
+    // security rules). The registry doc only needs to exist - its fields are
+    // ignored. Revoke by deleting the document.
+    function isAdmin() {
+      return signedIn() && (request.auth.token.admin == true
+        || exists(/databases/$(database)/documents/admin/$(request.auth.uid)));
+    }
+
+    function isUser(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function eventDoc(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId));
+    }
+
+    function isEventHost(eventId) {
+      return signedIn() && eventDoc(eventId).data.hostId == request.auth.uid;
+    }
+
+    function isEventCollaborator(eventId) {
+      return signedIn()
+        && 'collaboratorIds' in eventDoc(eventId).data
+        && request.auth.uid in eventDoc(eventId).data.collaboratorIds;
+    }
+
+    function canUseEvent(eventId) {
+      return isEventHost(eventId) || isEventCollaborator(eventId);
+    }
+
+    function hasOnlyPublicGiftFields() {
+      return request.resource.data.keys().hasOnly([
+        'guestName', 'guestEmail', 'amount', 'currency', 'message',
+        'giftType', 'status', 'createdAt'
+      ])
+      && request.resource.data.status == 'pending'
+      && request.resource.data.amount is number
+      && request.resource.data.amount > 0
+      && request.resource.data.currency is string;
+    }
+
+    function validCollaborators(data) {
+      return !('collaboratorIds' in data) || data.collaboratorIds is list;
+    }
+
+    // Admins have unrestricted read/write access to ALL event data for support
+    // purposes. This override is intentional: support staff may need to modify
+    // any field on any event (including tier, hostId, plan limits, and
+    // premium-gated subcollections) to resolve customer issues. The isAdmin()
+    // check is placed FIRST in every canManageEvent() call and in each explicit
+    // rule below so admins bypass all host/collaborator/plan restrictions.
+    function canManageEvent(eventId) {
+      return canUseEvent(eventId) || isAdmin();
+    }
+
+    function isPaidEvent(eventId) {
+      return eventDoc(eventId).data.tier == 'premium';
+    }
+
+    function validEventPlan(data) {
+      return data.tier == 'premium'
+        || (data.tier == 'free'
+          && data.guestCount <= 25);
+    }
+
+    // User profile data is private to the authenticated user.
+    match /users/{userId} {
+      allow read, create, update: if isUser(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /admin/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Session governance: per-device session records under sessions/{userId}.
+    // The doc id IS the stable device id. A record exists while a device holds
+    // an active session; users govern ONLY their own records. Client writes are
+    // restricted to the heartbeat / revocation fields (`lastActiveAt`,
+    // `expiresAt`, `signedOutAt`, `revokedAt`, label); setting `revokedAt`
+    // ends a session instantly from anywhere (the device's live watch signs it
+    // out). No user can forge another user's session doc.
+    match /sessions/{userId}/{sessionId} {
+      allow read: if isUser(userId) || isAdmin();
+      allow create: if isUser(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.deviceId == sessionId
+        && request.resource.data.deviceLabel is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.lastActiveAt is timestamp
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.keys().hasOnly([
+          'uid', 'deviceId', 'deviceLabel', 'createdAt',
+          'lastActiveAt', 'expiresAt', 'updatedAt']);
+      allow update: if isUser(userId)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.deviceId == resource.data.deviceId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'deviceLabel', 'lastActiveAt', 'expiresAt',
+          'signedOutAt', 'revokedAt', 'updatedAt']);
+      allow delete: if isUser(userId) || isAdmin();
+    }
+
+    // Billing state is admin-managed (control center + payment webhooks).
+    // Exception: the owner may self-serve GROW their ceremony quota (add-on
+    // purchase) - only the quota fields, bounded to sane maximums, and never
+    // decreasing. Tier, price, Stripe ids etc. remain admin-only.
+    match /subscriptions/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+      allow create: if isAdmin();
+      allow delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isUser(userId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+            ['maxEvents', 'extraCeremonies', 'addonHistory', 'updatedAt'])
+          && request.resource.data.maxEvents is number
+          && request.resource.data.extraCeremonies is number
+          && request.resource.data.maxEvents <= 100
+          && request.resource.data.extraCeremonies <= 100
+          && request.resource.data.maxEvents >= resource.data.get('maxEvents', 0)
+          && request.resource.data.extraCeremonies >= resource.data.get('extraCeremonies', 0)
+          && request.resource.data.addonHistory is list
+          && request.resource.data.addonHistory.size() <= 50);
+    }
+
+    match /events/{eventId} {
+      // NOTE: The host check intentionally uses resource.data (not get() on the
+      // event itself). get() via the {eventId} wildcard cannot be evaluated for
+      // list/query operations, which made every query on /events fail with
+      // "Missing or insufficient permissions" (rules are not filters). Using
+      // resource.data.hostId lets the engine prove the rule from the client's
+      // where('hostId', '==', uid) query constraint.
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.hostId == request.auth.uid)
+        || (signedIn() && request.auth.uid in resource.data.get('collaboratorIds', []));
+      allow create: if isAdmin() || (signedIn()
+        && request.resource.data.hostId == request.auth.uid
+        && validCollaborators(request.resource.data)
+        && validEventPlan(request.resource.data));
+      // Admins bypass all host restrictions for support (any fields, any plan).
+      allow update: if isAdmin() || (isEventHost(eventId)
+        && request.resource.data.hostId == resource.data.hostId
+        && validCollaborators(request.resource.data)
+        && validEventPlan(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'eventType', 'date', 'venue', 'coverImageUrl',
+          'guestCount', 'updatedAt', 'collaboratorIds',
+          'invitationUrl', 'invitationName', 'invitationUploadedAt', 'invitationBroadcasts'
+        ]));
+      allow delete: if isAdmin() || isEventHost(eventId);
+
+      match /timeline/{recordId} {
+        allow read, write: if canManageEvent(eventId);
+      }
+
+      match /vendors/{recordId} {
+        allow read, write: if canManageEvent(eventId);
+      }
+
+      match /seating/{recordId} {
+        allow read, write: if canManageEvent(eventId) && (isPaidEvent(eventId) || isAdmin());
+      }
+
+      match /tasks/{recordId} {
+        allow read, write: if canManageEvent(eventId);
+      }
+
+      match /budget/{recordId} {
+        allow read, write: if canManageEvent(eventId) && (isPaidEvent(eventId) || isAdmin());
+      }
+
+      match /guests/{recordId} {
+        allow read, write: if canManageEvent(eventId);
+      }
+
+      // Digital invitations: token-keyed, guest-facing. The 40-char token IS
+      // the capability - anyone holding the link can read the invite and
+      // respond (RSVP only); hosts manage their event's invites via
+      // canManageEvent. Invite count is metered by the plan's invite quota.
+      match /invites/{token} {
+        allow read: if canManageEvent(eventId) || token.size() >= 32;
+        allow create: if canManageEvent(eventId)
+          && request.resource.data.token == token
+          && request.resource.data.eventId == eventId
+          && request.resource.data.token.size() >= 32;
+        allow update: if canManageEvent(eventId)
+          || (token.size() >= 32
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rsvp', 'respondedAt'])
+            && request.resource.data.rsvp in ['pending', 'confirmed', 'declined']);
+        allow delete: if canManageEvent(eventId);
+      }
+
+      // Cash gifts contain payment-related data and are never readable by collaborators.
+      match /gifts/{giftId} {
+        allow read: if (isEventHost(eventId) && isPaidEvent(eventId)) || isAdmin();
+        allow create: if isAdmin() || (isPaidEvent(eventId) && hasOnlyPublicGiftFields());
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Public vendor passes: token-keyed, vendor-facing. The token IS the
+    // capability - anyone holding the link can read; hosts create their own
+    // event's passes via canManageEvent (verified against the stored eventId).
+    match /publicVendorPasses/{token} {
+      allow read: if token.size() >= 32;
+      allow create, update: if isAdmin() || (canManageEvent(request.resource.data.eventId)
+        && request.resource.data.token == token && token.size() >= 32);
+      allow delete: if isAdmin();
+    }
+
+    // Public gift pages: anyone can read (public), host can create/update their own.
+    match /publicGiftPages/{eventId} {
+      allow read: if true;
+      allow create, update: if isAdmin() || request.auth.uid == request.resource.data.hostId;
+      allow delete: if isAdmin();
+    }
+
+    // Public reviews feed: drives the landing/auth social-proof stars. Anyone
+    // can read the aggregate; only admins write (review moderation).
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && request.resource.data.rating is number
+        && request.resource.data.rating >= 0.5 && request.resource.data.rating <= 5;
+      allow delete: if isAdmin();
+    }
+
+    // Deny every collection not explicitly covered above to normal users.
+    // The admin claim intentionally provides platform-wide control.
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

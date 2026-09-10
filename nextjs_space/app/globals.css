@@ -1,0 +1,283 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── Midnight Celebration · Light ("Champagne Day") ───────────── */
+    --background: 40 50% 97%;
+    --foreground: 248 28% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 248 28% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 248 28% 12%;
+
+    --primary: 250 60% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 15 68% 70%;
+    --secondary-foreground: 20 50% 20%;
+
+    --muted: 40 32% 92%;
+    --muted-foreground: 248 10% 42%;
+
+    --accent: 38 70% 88%;
+    --accent-foreground: 248 28% 12%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 40 22% 86%;
+    --input: 40 22% 84%;
+    --ring: 250 60% 52%;
+
+    --radius: 0.625rem;
+    --radius-sm: calc(0.625rem - 4px);
+    --radius-lg: calc(0.625rem + 4px);
+    --radius-full: 9999px;
+
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+    --spacing-2xl: 48px;
+    --spacing-3xl: 64px;
+
+    --shadow-sm: 0 1px 2px 0 rgb(30 27 75 / 0.04), 0 1px 3px 0 rgb(30 27 75 / 0.07);
+    --shadow-md: 0 4px 14px -2px rgb(30 27 75 / 0.08), 0 2px 6px -2px rgb(30 27 75 / 0.05);
+    --shadow-lg: 0 18px 40px -8px rgb(30 27 75 / 0.16), 0 6px 14px -6px rgb(30 27 75 / 0.08);
+    --shadow-glow: 0 0 40px -8px hsl(var(--primary) / 0.35);
+
+    --duration-fast: 150ms;
+    --duration-normal: 250ms;
+    --duration-slow: 350ms;
+
+    --chart-1: 250 60% 52%;
+    --chart-2: 265 65% 60%;
+    --chart-3: 15 68% 66%;
+    --chart-4: 38 85% 60%;
+    --chart-5: 175 55% 45%;
+  }
+
+  .dark {
+    /* ── Midnight Celebration · Dark ("Celebration Night") ────────── */
+    --background: 248 30% 6%;
+    --foreground: 38 45% 95%;
+
+    --card: 248 24% 9.5%;
+    --card-foreground: 38 45% 95%;
+
+    --popover: 248 24% 8.5%;
+    --popover-foreground: 38 45% 95%;
+
+    --primary: 250 90% 71%;
+    --primary-foreground: 248 45% 8%;
+
+    --secondary: 15 70% 68%;
+    --secondary-foreground: 248 45% 8%;
+
+    --muted: 248 18% 15%;
+    --muted-foreground: 38 12% 66%;
+
+    --accent: 250 22% 17%;
+    --accent-foreground: 38 45% 95%;
+
+    --destructive: 0 62% 42%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 248 18% 19%;
+    --input: 248 18% 22%;
+    --ring: 250 90% 71%;
+
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 16px -2px rgb(0 0 0 / 0.45), 0 2px 6px -2px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 20px 50px -10px rgb(0 0 0 / 0.55), 0 8px 16px -8px rgb(0 0 0 / 0.35);
+    --shadow-glow: 0 0 60px -10px hsl(var(--primary) / 0.45);
+
+    --chart-1: 250 90% 71%;
+    --chart-2: 265 75% 68%;
+    --chart-3: 15 70% 66%;
+    --chart-4: 38 90% 62%;
+    --chart-5: 175 60% 52%;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    background-image: linear-gradient(hsl(var(--foreground) / 0.018) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground) / 0.018) 1px, transparent 1px);
+    background-size: 36px 36px;
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Ambient brand glow — every page sits in "celebration light" */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 75% 55% at 15% -12%, hsl(var(--primary) / 0.14), transparent 62%),
+      radial-gradient(ellipse 55% 45% at 88% -5%, hsl(var(--secondary) / 0.10), transparent 60%),
+      radial-gradient(ellipse 65% 50% at 50% 115%, hsl(var(--primary) / 0.07), transparent 65%);
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.25);
+  }
+
+
+@layer utilities {
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* ── Glass surfaces ──────────────────────────────────────────────── */
+  .glass {
+    background: hsl(var(--card) / 0.55);
+    backdrop-filter: blur(18px) saturate(1.4);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid hsl(var(--foreground) / 0.08);
+  }
+  .glass-strong {
+    background: hsl(var(--card) / 0.82);
+    backdrop-filter: blur(24px) saturate(1.5);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    border: 1px solid hsl(var(--foreground) / 0.09);
+  }
+
+  /* ── Gradient text & buttons ─────────────────────────────────────── */
+  .text-gradient {
+    background: linear-gradient(100deg, hsl(var(--primary)) 10%, hsl(265 75% 66%) 45%, hsl(var(--secondary)) 90%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .btn-shimmer { position: relative; overflow: hidden; }
+  .btn-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 40%, rgb(255 255 255 / 0.35) 50%, transparent 60%);
+    transform: translateX(-120%);
+    transition: transform 0.7s ease;
+  }
+  .btn-shimmer:hover::after { transform: translateX(120%); }
+
+  /* ── Aurora backdrop (hero sections) ─────────────────────────────── */
+  .aurora { position: relative; isolation: isolate; overflow: hidden; }
+  .aurora-orb {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(80px);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .orb-a { animation: drift-a 18s ease-in-out infinite; }
+  .orb-b { animation: drift-b 22s ease-in-out infinite; }
+  .orb-c { animation: drift-c 26s ease-in-out infinite; }
+
+  @keyframes drift-a {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(40px, -30px) scale(1.12); }
+  }
+  @keyframes drift-b {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-50px, 25px) scale(0.92); }
+  }
+  @keyframes drift-c {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(25px, 45px) scale(1.08); }
+  }
+
+  .float-a { animation: float-y 7s ease-in-out infinite; }
+  .float-b { animation: float-y 9s ease-in-out 0.8s infinite; }
+  .float-c { animation: float-y 11s ease-in-out 1.6s infinite; }
+  @keyframes float-y {
+    0%, 100% { transform: translateY(0) rotate(var(--tilt, 0deg)); }
+    50% { transform: translateY(-14px) rotate(var(--tilt, 0deg)); }
+  }
+
+  /* ── Gradient hairline border card ───────────────────────────────── */
+  .border-glow { position: relative; }
+  .border-glow::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: conic-gradient(from var(--angle, 0deg), hsl(var(--primary) / 0.9), hsl(var(--secondary) / 0.9), hsl(265 75% 66% / 0.9), hsl(var(--primary) / 0.9));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+  .border-glow:hover::before { opacity: 1; animation: spin-angle 4s linear infinite; }
+  @property --angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+  }
+  @keyframes spin-angle { to { --angle: 360deg; } }
+
+  /* ── Spotlight hover (mouse-tracked glow) ────────────────────────── */
+  .spotlight { position: relative; overflow: hidden; }
+  .spotlight::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(320px circle at var(--mx, 50%) var(--my, 0%), hsl(var(--primary) / 0.12), transparent 65%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+  .spotlight:hover::before { opacity: 1; }
+
+  /* ── Marquee ribbon ──────────────────────────────────────────────── */
+  .marquee { overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+  .marquee-track { display: flex; align-items: center; gap: 3rem; width: max-content; animation: marquee 32s linear infinite; }
+  .marquee:hover .marquee-track { animation-play-state: paused; }
+  @keyframes marquee { to { transform: translateX(-50%); } }
+
+  /* ── Legacy hero gradient (aurora-tinted) ────────────────────────── */
+  .hero-gradient {
+    background:
+      radial-gradient(ellipse 60% 50% at 50% -10%, hsl(var(--primary) / 0.14), transparent),
+      radial-gradient(ellipse 40% 40% at 85% 10%, hsl(var(--secondary) / 0.12), transparent),
+      linear-gradient(135deg, hsl(var(--background)), hsl(var(--card)));
+  }
+  .dark .hero-gradient {
+    background:
+      radial-gradient(ellipse 60% 50% at 50% -10%, hsl(var(--primary) / 0.22), transparent),
+      radial-gradient(ellipse 40% 40% at 85% 10%, hsl(var(--secondary) / 0.12), transparent),
+      linear-gradient(135deg, hsl(var(--background)), hsl(var(--card)));
+  }
+
+  .float-slow { animation: float-y 8s ease-in-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+  }
+}
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background-color: transparent; }
+  ::-webkit-scrollbar-thumb { background-color: hsl(var(--border)); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--muted-foreground) / 0.5); }
+}
+  }
+}

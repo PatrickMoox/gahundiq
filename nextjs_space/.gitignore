@@ -1,0 +1,15 @@
+# Secrets — never commit
+scripts/serviceAccountKey.json
+*.serviceAccountKey.json
+.env.local
+.env*.local
+
+# Dependencies & builds
+node_modules/
+.next/
+out/
+tsconfig.tsbuildinfo
+
+# Logs & OS
+*.log
+.DS_Store

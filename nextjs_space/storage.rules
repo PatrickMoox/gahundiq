@@ -1,0 +1,33 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Invitation files: public read (shared via links), owner-only write
+    match /invitations/{eventId}/{filename} {
+      allow read: if true;
+
+      // On create: user must be authenticated and must declare themselves as the owner
+      allow create: if request.auth != null
+        && request.metadata.hostId == request.auth.uid
+        && request.resource.size < 10 * 1024 * 1024; // 10 MB max
+
+      // On update/delete: only the original owner (stored in metadata) can modify
+      allow update, delete: if request.auth != null
+        && resource.metadata.hostId == request.auth.uid;
+    }
+
+    // Event cover images
+    match /covers/{eventId}/{filename} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.metadata.hostId == request.auth.uid
+        && request.resource.size < 10 * 1024 * 1024;
+      allow update, delete: if request.auth != null
+        && resource.metadata.hostId == request.auth.uid;
+    }
+
+    // Default: authenticated users only
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
