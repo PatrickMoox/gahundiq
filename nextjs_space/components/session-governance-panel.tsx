@@ -107,13 +107,14 @@ export function SessionGovernancePanel() {
               <li key={s.deviceId} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                    <Icon className="h-4.5 w-4.5 text-primary" />
+                    <Icon className="h-4 w-4 text-primary" />
                   </div>
                   <div className="min-w-0">
-                    <p className="flex items-center gap-2 truncate text-sm font-medium">
+                    {/* div (not p): the Badge below renders a <div>, and a <div> inside a <p> is invalid HTML that breaks hydration */}
+                    <div className="flex items-center gap-2 truncate text-sm font-medium">
                       <span className="truncate">{s.deviceLabel}</span>
                       {s.current && <Badge variant="secondary">This device</Badge>}
-                    </p>
+                    </div>
                     <p className="truncate text-xs text-muted-foreground">
                       {s.revoked ? 'Signed out' : s.active ? `Active${relative(s.lastActiveAt) ? ` · ${relative(s.lastActiveAt)}` : ''}` : 'Session ended'}
                     </p>

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useEventInvites, useGuests } from '@/lib/hooks/use-firestore-data';
 import { doc, setDoc } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
+import { effectiveRsvp, rsvpCounts } from '@/lib/rsvp';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,9 +25,20 @@ const EMPTY_FORM = { name: '', email: '', dietary: 'none' as DietaryPref, isVIP:
 /** URL-safe 40-char capability token for a guest's digital invitation. */
 function generateInviteToken(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const bytes = new Uint8Array(40);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((byte) => chars[byte % chars.length]).join('');
+  // crypto.getRandomValues is unavailable in non-secure contexts (http://),
+  // so degrade to Math.random rather than crash invite creation.
+  const randomInt = (max: number): number => {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      // Rejection sampling: 256 % 62 != 0, so raw `byte % 62` would bias the
+      // first 8 alphabet chars. Discard bytes at/above the largest multiple.
+      const limit = Math.floor(256 / max) * max;
+      const buf = new Uint8Array(1);
+      do { crypto.getRandomValues(buf); } while (buf[0] >= limit);
+      return buf[0] % max;
+    }
+    return Math.floor(Math.random() * max);
+  };
+  return Array.from({ length: 40 }, () => chars[randomInt(chars.length)]).join('');
 }
 
 export function GuestsTab({ eventId, event }: { eventId: string; event: EventData }) {
@@ -40,12 +52,11 @@ export function GuestsTab({ eventId, event }: { eventId: string; event: EventDat
 
   const invitedCount = invites.length;
   const inviteFor = (guest?: GuestData) => (guest?.id ? invites.find((invite) => invite.guestId === guest.id) : undefined);
-  const displayRsvp = (guest?: GuestData): RsvpStatus => {
-    const invite = inviteFor(guest);
-    if (invite?.respondedAt && invite.rsvp) return invite.rsvp;
-    return (guest?.rsvp ?? 'pending') as RsvpStatus;
-  };
-  const confirmedCount = guests.filter((guest) => guest.rsvp === 'confirmed').length;
+  // RSVP tallies include responses guests made through the public invite link
+  // (those land on the invite doc, NOT the guest doc) — see lib/rsvp.ts.
+  const counts = rsvpCounts(guests, invites);
+  const confirmedCount = counts.confirmed;
+  const pendingCount = counts.pending;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -145,7 +156,7 @@ export function GuestsTab({ eventId, event }: { eventId: string; event: EventDat
   const stats = [
     { label: 'Guests', value: `${guests.length}/${limits.guests}` },
     { label: 'Confirmed', value: String(confirmedCount) },
-    { label: 'Pending', value: String(guests.filter((guest) => (guest.rsvp ?? 'pending') === 'pending').length) },
+    { label: 'Pending', value: String(pendingCount) },
     { label: 'Invites sent', value: `${invitedCount}/${limits.invites}` },
   ];
 
@@ -197,7 +208,7 @@ export function GuestsTab({ eventId, event }: { eventId: string; event: EventDat
                   <Check className="h-3 w-3" /> RSVP: {inviteFor(guest)?.rsvp}
                 </Badge>
               )}
-              <Select value={displayRsvp(guest)} onValueChange={(v) => handleRsvp(guest, v as RsvpStatus)}>
+              <Select value={effectiveRsvp(guest, invites)} onValueChange={(v) => handleRsvp(guest, v as RsvpStatus)}>
                 <SelectTrigger className="h-8 w-[130px] text-xs capitalize"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {RSVP_OPTIONS.map((option) => <SelectItem key={option} value={option} className="capitalize">{option}</SelectItem>)}

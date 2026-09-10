@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
+import { formatEventDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import type { InviteData, RsvpStatus } from '@/types/firestore';
 import { Calendar, CalendarX2, Heart, Loader2, MailCheck, MapPin, PartyPopper } from 'lucide-react';
@@ -64,7 +65,7 @@ export function InviteClient({ eventId, token }: { eventId: string; token: strin
             <p className="text-sm uppercase tracking-widest text-primary">You are invited</p>
             <h1 className="mt-2 font-display text-4xl font-bold tracking-tight">{invite.eventTitle ?? 'Our Ceremony'}</h1>
             <div className="mt-3 flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{invite.eventDate instanceof Date ? invite.eventDate.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Date to be announced'}</span>
+              <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{formatEventDate(invite?.eventDate, 'Date to be announced')}</span>
               {invite.eventVenue && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{invite.eventVenue}</span>}
             </div>
           </motion.div>

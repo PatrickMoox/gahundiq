@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { BudgetItem, EventData } from '@/types/firestore';
 import { formatMoney, currencySymbol } from '@/lib/currency';
+import { csvEscape } from '@/lib/utils';
 import { Plus, DollarSign, TrendingUp, TrendingDown, PieChart, Download, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -29,23 +30,40 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
     return { estimated: est, actual: act, deposited: dep, remaining: est - act, balance: act - dep };
   }, [items]);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!form?.name?.trim()) return;
-    addItem?.({ ...form, eventId, balanceDue: (form?.actualCost ?? 0) - (form?.depositPaid ?? 0), isPaid: false, notes: '' });
-    setForm({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0 });
-    setShowForm(false);
+    try {
+      await addItem?.({ ...form, eventId, balanceDue: (form?.actualCost ?? 0) - (form?.depositPaid ?? 0), isPaid: false, notes: '' });
+      setForm({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0 });
+      setShowForm(false);
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not add the budget item.');
+    }
+  };
+
+  const handleDelete = async (id?: string) => {
+    if (!id) return;
+    try {
+      await deleteItem?.(id);
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not delete the budget item.');
+    }
   };
 
   const exportCSV = () => {
     const header = 'Category,Item,Estimated,Actual,Deposit,Balance Due\n';
+    // csvEscape keeps names with commas/quotes intact and neutralizes
+    // spreadsheet formula injection — see lib/utils.ts.
     const rows = (items ?? []).map((i: BudgetItem) =>
-      `${i?.category},${i?.name},${i?.estimatedCost},${i?.actualCost},${i?.depositPaid},${(i?.actualCost ?? 0) - (i?.depositPaid ?? 0)}`
+      [i?.category, i?.name, i?.estimatedCost, i?.actualCost, i?.depositPaid, (i?.actualCost ?? 0) - (i?.depositPaid ?? 0)].map(csvEscape).join(',')
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = 'budget.csv';
     a.click();
+    URL.revokeObjectURL(url);
     toast.success('CSV exported!');
   };
 
@@ -106,7 +124,7 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
                   <td className={`px-3 py-2 text-right font-mono ${balance > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
                     {formatMoney(balance, currency)}
                   </td>
-                  <td className="px-3 py-2"><button onClick={() => deleteItem?.(item?.id)}><Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" /></button></td>
+                  <td className="px-3 py-2"><button onClick={() => handleDelete(item?.id)}><Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" /></button></td>
                 </tr>
               );
             })}
@@ -121,7 +139,7 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
           <div className="space-y-3">
             <div><Label>Category</Label><Input value={form?.category ?? ''} onChange={(e: any) => setForm({ ...form, category: e?.target?.value ?? '' })} className="mt-1" placeholder="Venue, Catering..." /></div>
             <div><Label>Item Name</Label><Input value={form?.name ?? ''} onChange={(e: any) => setForm({ ...form, name: e?.target?.value ?? '' })} className="mt-1" /></div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div><Label>Estimated</Label><Input type="number" value={form?.estimatedCost ?? 0} onChange={(e: any) => setForm({ ...form, estimatedCost: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>
               <div><Label>Actual</Label><Input type="number" value={form?.actualCost ?? 0} onChange={(e: any) => setForm({ ...form, actualCost: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>
               <div><Label>Deposit</Label><Input type="number" value={form?.depositPaid ?? 0} onChange={(e: any) => setForm({ ...form, depositPaid: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>

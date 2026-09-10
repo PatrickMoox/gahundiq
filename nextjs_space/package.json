@@ -5,7 +5,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint -c eslint.ssr.config.mjs ."
+    "lint": "eslint -c eslint.ssr.config.mjs .",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",

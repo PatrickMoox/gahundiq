@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, ArrowRight, Heart, Palmtree, HandHeart, Theater, CreditCard, PartyPopper, Share2, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import type { GiftType } from '@/types/firestore';
 import { formatMoney } from '@/lib/currency';
 
@@ -47,6 +48,12 @@ export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, currenc
   const fee = (effectiveAmount * 0.029 + 0.30);
 
   const handleSend = () => {
+    // The rules require amount > 0 for guest-created gifts; catch it here with
+    // a clear message instead of a confusing permission-denied afterwards.
+    if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
+      toast.error('Please enter a gift amount greater than zero.');
+      return;
+    }
     // A real gift is only confirmed once the host processes the payment. Until
     // payments are wired, this records a PENDING pledge (matches Firestore
     // rules, which only allow guests to create gifts with status 'pending').

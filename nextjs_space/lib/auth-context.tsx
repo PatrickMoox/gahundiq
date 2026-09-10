@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Session governance state (see lib/session-policy.ts) ──────────
   const uidRef = useRef<string | null>(null);
   const deviceIdRef = useRef<string | null>(null);
-  const sessionRefRef = useRef<any>(null);         // sessions/{uid}/{deviceId} ref
+  const sessionRefRef = useRef<any>(null);         // sessions/{uid}/devices/{deviceId} ref
   const sessionReadyRef = useRef(false);           // our live session doc exists
   const localSignOutRef = useRef(false);           // sign-out initiated on THIS device
   const endingRef = useRef(false);                 // forced sign-out already in flight
@@ -136,6 +136,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         const record = snap.data();
+        // Multi-tab device sync: activity is DEVICE-level, not tab-level. When
+        // a sibling tab on this device refreshes lastActiveAt (its heartbeat
+        // runs while visible), adopt the newer timestamp so THIS tab's idle
+        // check does not force-sign-out an actively used device (a hidden tab
+        // still ticks every minute and would otherwise idle out after 35 min
+        // even though another tab keeps the session alive).
+        if (record?.revokedAt == null && record?.signedOutAt == null) {
+          const sharedLastActive = tsToMs(record?.lastActiveAt);
+          if (sharedLastActive > lastHeartbeatAtRef.current) lastHeartbeatAtRef.current = sharedLastActive;
+        }
         if (sessionReadyRef.current && (record?.revokedAt != null || record?.signedOutAt != null)) {
           forceSignOut('You were signed out on this device.');
         }
@@ -145,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Concurrent-device cap: when a new device signs in at the cap, evict the
     // least-recently-active live device by flagging its session revoked.
     const evictIfOverCap = async (db: any, uid: string, keepDeviceId: string) => {
-      const snap = await getDocs(collection(db, 'sessions', uid));
+      const snap = await getDocs(collection(db, 'sessions', uid, 'devices'));
       const now = Date.now();
       const live = snap.docs
         .filter((d: any) => d.id !== keepDeviceId)
@@ -168,7 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!db) return;
       const deviceId = getOrCreateDeviceId();
       deviceIdRef.current = deviceId;
-      const ref = doc(db, 'sessions', uid, deviceId);
+      const ref = doc(db, 'sessions', uid, 'devices', deviceId);
       sessionRefRef.current = ref;
       watchSession(ref);
 
@@ -379,7 +389,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const db = getFirestoreClient();
     const uid = uidRef.current;
     if (!db || !uid) return;
-    await updateDoc(doc(db, 'sessions', uid, deviceId), {
+    await updateDoc(doc(db, 'sessions', uid, 'devices', deviceId), {
       revokedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -390,7 +400,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const db = getFirestoreClient();
     const uid = uidRef.current;
     if (!db || !uid) return;
-    const snap = await getDocs(collection(db, 'sessions', uid));
+    const snap = await getDocs(collection(db, 'sessions', uid, 'devices'));
     const keep = deviceIdRef.current;
     const batch = writeBatch(db);
     snap.docs.forEach((d: any) => {

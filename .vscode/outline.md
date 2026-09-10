@@ -173,7 +173,7 @@ gahundiq/
 | `events/{eventId}/guests` | Guest records |
 | `events/{eventId}/invites` | Token-keyed invitations |
 | `events/{eventId}/gifts` | Cash gifts (premium) |
-| `sessions/{uid}/{deviceId}` | Session governance |
+| `sessions/{uid}/devices/{deviceId}` | Session governance |
 | `publicVendorPasses/{token}` | Public vendor passes |
 | `publicGiftPages/{eventId}` | Public gift pages |
 | `reviews/{reviewId}` | Public reviews |

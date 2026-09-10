@@ -88,18 +88,25 @@ export function NewEventClient() {
         updatedAt: new Date(),
       });
 
-      // Auto-create the public gift page so /gift/{eventId} works immediately
-      await setDoc(doc(db, 'publicGiftPages', created.id), {
-        eventId: created.id,
-        hostId: user.uid,
-        title: title.trim(),
-        eventType,
-        date: date ? new Date(`${date}T12:00:00`) : null,
-        venue: venue.trim(),
-        currency,
-        isActive: true,
-        createdAt: new Date(),
-      });
+      // Auto-create the public gift page so /gift/{eventId} works immediately.
+      // Non-fatal: the event itself is created and usable — the gift page can
+      // be recreated later (e.g. after granting premium), so never block the
+      // user from entering their new event because of it.
+      try {
+        await setDoc(doc(db, 'publicGiftPages', created.id), {
+          eventId: created.id,
+          hostId: user.uid,
+          title: title.trim(),
+          eventType,
+          date: date ? new Date(`${date}T12:00:00`) : null,
+          venue: venue.trim(),
+          currency,
+          isActive: true,
+          createdAt: new Date(),
+        });
+      } catch {
+        toast.info('Event created — the public gift page could not be set up yet.');
+      }
 
       toast.success('Event created successfully!');
       router.push(`/events/${created.id}`);

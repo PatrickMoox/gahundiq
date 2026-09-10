@@ -11,6 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Task, Milestone, TaskPriority, TaskStatus } from '@/types/firestore';
+import { toast } from 'sonner';
 import { Plus, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const MILESTONES: Milestone[] = ['12_months', '6_months', '3_months', '1_month', 'week_of', 'day_of', 'post_event'];
@@ -24,22 +25,43 @@ export function TasksTab({ eventId }: { eventId: string }) {
   const [form, setForm] = useState({ title: '', milestone: '3_months' as Milestone, priority: 'medium' as TaskPriority, category: '', assignedTo: '' });
   const [filterPriority, setFilterPriority] = useState<string>('all');
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!form?.title?.trim()) return;
-    addTask?.({ ...form, eventId, status: 'todo' as TaskStatus, description: '' });
-    setForm({ title: '', milestone: '3_months', priority: 'medium', category: '', assignedTo: '' });
-    setShowForm(false);
+    try {
+      await addTask?.({ ...form, eventId, status: 'todo' as TaskStatus, description: '' });
+      setForm({ title: '', milestone: '3_months', priority: 'medium', category: '', assignedTo: '' });
+      setShowForm(false);
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not add the task.');
+    }
   };
 
-  const cycleStatus = (task: Task) => {
+  const cycleStatus = async (task: Task) => {
     const next: Record<string, TaskStatus> = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
-    updateTask?.(task?.id, { status: (next[task?.status ?? 'todo'] ?? 'todo') as TaskStatus });
+    try {
+      await updateTask?.(task?.id, { status: (next[task?.status ?? 'todo'] ?? 'todo') as TaskStatus });
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not update the task.');
+    }
   };
 
-  const moveTask = (task: Task, direction: 'left' | 'right') => {
+  const moveTask = async (task: Task, direction: 'left' | 'right') => {
     const idx = MILESTONES.indexOf(task?.milestone);
     const newIdx = direction === 'left' ? Math.max(0, idx - 1) : Math.min(MILESTONES.length - 1, idx + 1);
-    updateTask?.(task?.id, { milestone: MILESTONES[newIdx] });
+    try {
+      await updateTask?.(task?.id, { milestone: MILESTONES[newIdx] });
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not move the task.');
+    }
+  };
+
+  const handleDeleteTask = async (id?: string) => {
+    if (!id) return;
+    try {
+      await deleteTask?.(id);
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not delete the task.');
+    }
   };
 
   return (
@@ -86,7 +108,7 @@ export function TasksTab({ eventId }: { eventId: string }) {
                           <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                             <button onClick={() => moveTask(task, 'left')} className="p-0.5"><ChevronLeft className="h-3 w-3" /></button>
                             <button onClick={() => moveTask(task, 'right')} className="p-0.5"><ChevronRight className="h-3 w-3" /></button>
-                            <button onClick={() => deleteTask?.(task?.id)} className="p-0.5"><Trash2 className="h-3 w-3 text-destructive" /></button>
+                            <button onClick={() => handleDeleteTask(task?.id)} className="p-0.5"><Trash2 className="h-3 w-3 text-destructive" /></button>
                           </div>
                         </div>
                         <p className={`font-medium ${task?.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>{task?.title}</p>

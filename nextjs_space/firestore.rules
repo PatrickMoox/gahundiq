@@ -38,19 +38,61 @@ service cloud.firestore {
       return isEventHost(eventId) || isEventCollaborator(eventId);
     }
 
+    // Collaboration section sharing (Phase 1.5): collaborators always get the
+    // core planning sections, but money sections ('budget', 'vendors') are
+    // HIDDEN unless the host explicitly opened them for that uid. The event
+    // doc carries `collaboratorAccess: { uid: { section: bool } }`; an absent
+    // entry falls back to the safe default below. The UI mirrors this (see
+    // lib/collab.ts isSectionShared) but THESE RULES are the enforcement.
+    function collaboratorSectionAllowed(eventId, section) {
+      return isEventCollaborator(eventId)
+        && eventDoc(eventId).data.get('collaboratorAccess', {})
+          .get(request.auth.uid, {})
+          .get(section, section == 'budget' || section == 'vendors');
+    }
+
+    // Public gift pledges (written by anonymous guests from /gift/{eventId}):
+    // shape + sanity bounds enforced here so guests cannot write arbitrary or
+    // oversized junk into the host's gifts subcollection.
     function hasOnlyPublicGiftFields() {
       return request.resource.data.keys().hasOnly([
         'guestName', 'guestEmail', 'amount', 'currency', 'message',
         'giftType', 'status', 'createdAt'
       ])
-      && request.resource.data.status == 'pending'
+      && request.resource.data.guestName is string
+      && request.resource.data.guestName.size() > 0
+      && request.resource.data.guestName.size() <= 100
+      && (!('guestEmail' in request.resource.data)
+        || request.resource.data.guestEmail == null
+        || (request.resource.data.guestEmail is string
+          && request.resource.data.guestEmail.size() <= 200))
       && request.resource.data.amount is number
       && request.resource.data.amount > 0
-      && request.resource.data.currency is string;
+      && request.resource.data.amount <= 10000000
+      && request.resource.data.currency is string
+      && request.resource.data.currency.size() == 3
+      && (!('message' in request.resource.data)
+        || (request.resource.data.message is string
+          && request.resource.data.message.size() <= 1000))
+      && request.resource.data.giftType is string
+      && request.resource.data.giftType in ['cash', 'honeymoon_fund', 'charity', 'experience']
+      && request.resource.data.status == 'pending'
+      && request.resource.data.createdAt is timestamp;
     }
 
     function validCollaborators(data) {
       return !('collaboratorIds' in data) || data.collaboratorIds is list;
+    }
+
+    // Online invitation link (host-set external URL, e.g. Canva). Empty string
+    // clears the link; otherwise it must be a bounded http(s) URL.
+    function validOnlineInvitation(data) {
+      return (!('onlineInvitationUrl' in data)
+        || (data.onlineInvitationUrl is string
+          && data.onlineInvitationUrl.size() <= 2048
+          && (data.onlineInvitationUrl.size() == 0 || data.onlineInvitationUrl.matches('https?://.*'))))
+        && (!('onlineInvitationLabel' in data)
+          || (data.onlineInvitationLabel is string && data.onlineInvitationLabel.size() <= 80));
     }
 
     // Admins have unrestricted read/write access to ALL event data for support
@@ -67,10 +109,43 @@ service cloud.firestore {
       return eventDoc(eventId).data.tier == 'premium';
     }
 
+    // True when the signed-in user holds a premium entitlement the rules can
+    // verify directly from the admin-managed `subscriptions/{uid}` doc:
+    // tier premium, status not canceled/past_due, and currentPeriodEnd either
+    // null/absent (open-ended grant) or a future timestamp. Mirrors
+    // lib/plan-entitlements.ts isSubscriptionActive(). Identical get() calls
+    // within one evaluation are deduped by the rules engine (1 billed read).
+    // Without this check ANY user could create a tier:'premium' event and
+    // unlock seating/budget/gifts/coordinator for free — the paywall MUST be
+    // enforced here, not in the UI.
+    function isSubscribed() {
+      return signedIn()
+        && get(/databases/$(database)/documents/subscriptions/$(request.auth.uid)).data.get('tier', '') == 'premium'
+        && !(get(/databases/$(database)/documents/subscriptions/$(request.auth.uid)).data.get('status', '') in ['canceled', 'past_due'])
+        && (get(/databases/$(database)/documents/subscriptions/$(request.auth.uid)).data.get('currentPeriodEnd', null) == null
+          || (get(/databases/$(database)/documents/subscriptions/$(request.auth.uid)).data.get('currentPeriodEnd', null) is timestamp
+            && get(/databases/$(database)/documents/subscriptions/$(request.auth.uid)).data.get('currentPeriodEnd', null) > request.time));
+    }
+
+    // Plan validation at event CREATE: 'free' is capped at 25 guests;
+    // 'premium' requires a verified premium subscription (admins bypass via
+    // the isAdmin() branch in the create rule).
     function validEventPlan(data) {
-      return data.tier == 'premium'
+      return (data.tier == 'premium' && isSubscribed())
         || (data.tier == 'free'
+          && data.guestCount is number
           && data.guestCount <= 25);
+    }
+
+    // Plan validation at event UPDATE: hosts cannot change tier anyway (it is
+    // not in the host update key allowlist), so just re-check the free-tier
+    // guest cap. Premium events stay editable for their host even if their
+    // subscription later lapses — downgrade is an admin action.
+    function validEventPlanForUpdate() {
+      return request.resource.data.tier == resource.data.tier
+        && (request.resource.data.tier != 'free'
+          || (request.resource.data.guestCount is number
+            && request.resource.data.guestCount <= 25));
     }
 
     // User profile data is private to the authenticated user.
@@ -83,14 +158,14 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Session governance: per-device session records under sessions/{userId}.
+    // Session governance: per-device session records under sessions/{userId}/devices.
     // The doc id IS the stable device id. A record exists while a device holds
     // an active session; users govern ONLY their own records. Client writes are
     // restricted to the heartbeat / revocation fields (`lastActiveAt`,
     // `expiresAt`, `signedOutAt`, `revokedAt`, label); setting `revokedAt`
     // ends a session instantly from anywhere (the device's live watch signs it
     // out). No user can forge another user's session doc.
-    match /sessions/{userId}/{sessionId} {
+    match /sessions/{userId}/devices/{sessionId} {
       allow read: if isUser(userId) || isAdmin();
       allow create: if isUser(userId)
         && request.resource.data.uid == userId
@@ -146,41 +221,69 @@ service cloud.firestore {
       allow create: if isAdmin() || (signedIn()
         && request.resource.data.hostId == request.auth.uid
         && validCollaborators(request.resource.data)
-        && validEventPlan(request.resource.data));
+        && validEventPlan(request.resource.data)
+        && validOnlineInvitation(request.resource.data));
       // Admins bypass all host restrictions for support (any fields, any plan).
       allow update: if isAdmin() || (isEventHost(eventId)
         && request.resource.data.hostId == resource.data.hostId
         && validCollaborators(request.resource.data)
-        && validEventPlan(request.resource.data)
+        && validEventPlanForUpdate()
+        && validOnlineInvitation(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'title', 'eventType', 'date', 'venue', 'coverImageUrl',
-          'guestCount', 'updatedAt', 'collaboratorIds', 'currency',
-          'invitationUrl', 'invitationName', 'invitationUploadedAt', 'invitationBroadcasts'
-        ]));
+          'guestCount', 'updatedAt', 'collaboratorIds', 'collaboratorNames', 'collaboratorAccess', 'currency',
+          'invitationUrl', 'invitationName', 'invitationUploadedAt', 'invitationBroadcasts',
+          'onlineInvitationUrl', 'onlineInvitationLabel'
+        ]))
+        // Collaborator SELF-JOIN: an invited user may add ONLY themselves
+        // (plus their self-reported display name), and only while a claim doc
+        // exists that the rules proved against an accepted invite token. This
+        // is what makes invite-by-link work without a backend.
+        || (signedIn()
+          && request.resource.data.hostId == resource.data.hostId
+          && validCollaborators(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'collaboratorIds', 'collaboratorNames', 'updatedAt'])
+          && request.auth.uid in request.resource.data.get('collaboratorIds', [])
+          && !(request.auth.uid in resource.data.get('collaboratorIds', []))
+          && exists(/databases/$(database)/documents/collabClaims/$(eventId + '_' + request.auth.uid))
+          // collaboratorNames may only GROW by exactly the caller's own key:
+          // keep every existing entry (hasAll), add at most one (size), and it
+          // must be the caller's own (in keys) with a string display name.
+          && request.resource.data.get('collaboratorNames', {}).keys().hasAll(
+               resource.data.get('collaboratorNames', {}).keys())
+          && request.resource.data.get('collaboratorNames', {}).keys().size() <=
+               resource.data.get('collaboratorNames', {}).keys().size() + 1
+          && request.auth.uid in request.resource.data.get('collaboratorNames', {}).keys()
+          && request.resource.data.get('collaboratorNames', {}).get(request.auth.uid, '') is string);
       allow delete: if isAdmin() || isEventHost(eventId);
 
+      // Section access: host/admin always; collaborators gated per section —
+      // money sections (budget, vendors) are private unless explicitly opened.
       match /timeline/{recordId} {
-        allow read, write: if canManageEvent(eventId);
+        allow read, write: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
       }
 
       match /vendors/{recordId} {
-        allow read, write: if canManageEvent(eventId);
+        allow read, write: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors');
       }
 
       match /seating/{recordId} {
-        allow read, write: if canManageEvent(eventId) && (isPaidEvent(eventId) || isAdmin());
+        allow read, write: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'seating'))
+          && (isPaidEvent(eventId) || isAdmin());
       }
 
       match /tasks/{recordId} {
-        allow read, write: if canManageEvent(eventId);
+        allow read, write: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
       }
 
       match /budget/{recordId} {
-        allow read, write: if canManageEvent(eventId) && (isPaidEvent(eventId) || isAdmin());
+        allow read, write: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget'))
+          && (isPaidEvent(eventId) || isAdmin());
       }
 
       match /guests/{recordId} {
-        allow read, write: if canManageEvent(eventId);
+        allow read, write: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
       }
 
       // Digital invitations: token-keyed, guest-facing. The 40-char token IS
@@ -196,7 +299,8 @@ service cloud.firestore {
         allow update: if canManageEvent(eventId)
           || (token.size() >= 32
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rsvp', 'respondedAt'])
-            && request.resource.data.rsvp in ['pending', 'confirmed', 'declined']);
+            && request.resource.data.rsvp in ['pending', 'confirmed', 'declined']
+            && request.resource.data.respondedAt is timestamp);
         allow delete: if canManageEvent(eventId);
       }
 
@@ -208,20 +312,107 @@ service cloud.firestore {
       }
     }
 
+    // Collaboration invites: token-keyed, link-shared co-planner invites
+    // (groom joining the bride's ceremony). The 40-char token IS the
+    // capability. HOST-ONLY management — collaborators cannot extend the
+    // guest-planner circle (privacy: the host decides who joins). The
+    // invitee's only permitted update is accepting (proving they hold the
+    // token and that the link hasn't expired); the host may only revoke.
+    match /collabInvites/{token} {
+      allow read: if signedIn() && token.size() >= 32;
+      allow create: if signedIn()
+        && isEventHost(request.resource.data.eventId)
+        && request.resource.data.token == token
+        && token.size() >= 32
+        && request.resource.data.status == 'pending'
+        && request.resource.data.invitedBy == request.auth.uid
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.keys().hasOnly([
+          'eventId', 'eventTitle', 'invitedBy', 'invitedByName',
+          'createdAt', 'expiresAt', 'status']);
+      allow update: if isAdmin()
+        // Inviter-side: revoke only (never flip a revoked invite back to pending).
+        || (isEventHost(resource.data.eventId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+          && request.resource.data.status in ['pending', 'revoked'])
+        // Invitee-side: accept only, only themselves, only before expiry. The
+        // diff() key restriction plus the create rule's fixed 7-field shape
+        // fully constrain the resulting document — no extra shape check needed.
+        || (signedIn()
+          && resource.data.status == 'pending'
+          && resource.data.expiresAt is timestamp
+          && request.time < resource.data.expiresAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'acceptedBy', 'acceptedAt', 'updatedAt'])
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.acceptedBy == request.auth.uid);
+      allow delete: if isAdmin() || isEventHost(resource.data.eventId);
+    }
+
+    // Collaboration claims: written by the invitee in the same batch that
+    // accepts the invite. getAfter() in the create rule verifies the invite
+    // was accepted by THIS user for THIS event in the same atomic write, so a
+    // claim can never exist without a legitimately accepted token. The event
+    // self-join update then requires this doc to exist (see /events update).
+    match /collabClaims/{claimId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn()
+        && claimId == request.resource.data.eventId + '_' + request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.eventId is string
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 60
+        && request.resource.data.token is string
+        && request.resource.data.token.size() >= 32
+        && request.resource.data.keys().hasOnly(['eventId', 'uid', 'displayName', 'token', 'createdAt'])
+        && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.status == 'accepted'
+        && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.acceptedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.eventId == request.resource.data.eventId;
+      allow delete: if isAdmin()
+        || (signedIn() && resource.data.uid == request.auth.uid)
+        // The event host removes claims when kicking a collaborator (so the
+        // removed user cannot re-join via the stale claim).
+        || (signedIn()
+          && resource.data.eventId is string
+          && get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.hostId == request.auth.uid);
+    }
+
     // Public vendor passes: token-keyed, vendor-facing. The token IS the
     // capability - anyone holding the link can read; hosts create their own
     // event's passes via canManageEvent (verified against the stored eventId).
+    // On update the eventId is immutable so a pass can never be re-pointed at
+    // another event after creation.
     match /publicVendorPasses/{token} {
       allow read: if token.size() >= 32;
-      allow create, update: if isAdmin() || (canManageEvent(request.resource.data.eventId)
+      allow create: if isAdmin() || (canManageEvent(request.resource.data.eventId)
         && request.resource.data.token == token && token.size() >= 32);
+      allow update: if isAdmin() || (canManageEvent(request.resource.data.eventId)
+        && request.resource.data.token == token && token.size() >= 32
+        && request.resource.data.eventId == resource.data.eventId);
       allow delete: if isAdmin();
     }
 
-    // Public gift pages: anyone can read (public), host can create/update their own.
+    // Public gift pages: anyone can read (public); the doc id IS the event id,
+    // so writes are bound to it — a page can never be created for or repointed
+    // at a different event — and only the event's ACTUAL host (or admin)
+    // writes. Ownership is verified against events/{eventId} itself: without
+    // this check any signed-in user could publish a spoofed gift page (title,
+    // venue, currency) under someone else's event id.
     match /publicGiftPages/{eventId} {
       allow read: if true;
-      allow create, update: if isAdmin() || request.auth.uid == request.resource.data.hostId;
+      allow create: if isAdmin()
+        || (signedIn()
+          && isEventHost(eventId)
+          && request.resource.data.eventId == eventId
+          && request.resource.data.hostId == request.auth.uid
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120);
+      allow update: if isAdmin()
+        || (signedIn()
+          && isEventHost(eventId)
+          && request.resource.data.eventId == eventId
+          && request.resource.data.hostId == request.auth.uid);
       allow delete: if isAdmin();
     }
 

@@ -44,28 +44,42 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
     setShowSheet(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form?.name?.trim()) return;
-    if (editingId) { updateVendor?.(editingId, form); }
-    else { addVendor?.(form); }
-    setShowSheet(false);
+    try {
+      if (editingId) { await updateVendor?.(editingId, form); }
+      else { await addVendor?.(form); }
+      setShowSheet(false);
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not save the vendor.');
+    }
+  };
+
+  const handleDeleteVendor = async (id?: string) => {
+    if (!id) return;
+    try {
+      await deleteVendor?.(id);
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not delete the vendor.');
+    }
   };
 
   const generatePass = async (vendor: Vendor) => {
-    const token = vendor?.accessPassToken ?? uuidv4();
     const db = getFirestoreClient();
-    if (db && !vendor?.accessPassToken) {
-      await updateVendor?.(vendor?.id, { accessPassToken: token });
-    }
-    // Build the public vendor pass document: vendor info + event info + relevant timeline
-    if (db && event) {
-      const vendorName = vendor?.name?.toLowerCase()?.split(' ')?.[0] ?? '';
-      const contactName = vendor?.contactName?.toLowerCase()?.split(' ')?.[0] ?? '';
-      const relevantTimeline = (timeline ?? []).filter((t: TimelineItem) =>
-        t?.assignedTo?.toLowerCase()?.includes(vendorName) ||
-        t?.assignedTo?.toLowerCase()?.includes(contactName)
-      );
-      try {
+    if (!db) { toast.error('Firestore is not configured.'); return; }
+    const token = vendor?.accessPassToken ?? uuidv4();
+    try {
+      if (!vendor?.accessPassToken) {
+        await updateVendor?.(vendor?.id, { accessPassToken: token });
+      }
+      // Build the public vendor pass document: vendor info + event info + relevant timeline
+      if (event) {
+        const vendorName = vendor?.name?.toLowerCase()?.split(' ')?.[0] ?? '';
+        const contactName = vendor?.contactName?.toLowerCase()?.split(' ')?.[0] ?? '';
+        const relevantTimeline = (timeline ?? []).filter((t: TimelineItem) =>
+          t?.assignedTo?.toLowerCase()?.includes(vendorName) ||
+          t?.assignedTo?.toLowerCase()?.includes(contactName)
+        );
         await setDoc(doc(db, 'publicVendorPasses', token), {
           vendor: {
             name: vendor?.name ?? '',
@@ -90,16 +104,24 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
             assignedTo: t?.assignedTo ?? '',
           })),
           eventId,
+          // The rules require request.resource.data.token == the doc id for
+          // publicVendorPasses create/update — omitting it made every pass
+          // write fail with permission-denied.
+          token,
           updatedAt: new Date(),
         });
-      } catch (err) {
-        toast.error('Could not create access pass. Check permissions.');
-        return;
       }
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Could not create access pass. Check permissions.');
+      return;
     }
     const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/vendor-pass/${token}`;
-    try { navigator.clipboard?.writeText?.(url); } catch { /* noop */ }
-    toast.success('Access pass link copied!');
+    try {
+      await navigator.clipboard?.writeText?.(url);
+      toast.success('Access pass link copied!');
+    } catch {
+      toast.info(`Access pass link: ${url}`);
+    }
   };
 
   return (
@@ -156,7 +178,7 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
                 <div className="flex gap-1">
                   <Button variant="ghost" size="sm" onClick={() => openEdit(v)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="sm" onClick={() => generatePass(v)}><Link2 className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => deleteVendor?.(v?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleDeleteVendor(v?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                 </div>
               </motion.div>
             );
@@ -181,7 +203,7 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
             <div><Label>Email</Label><Input value={form?.email ?? ''} onChange={(e: any) => setForm({ ...form, email: e?.target?.value ?? '' })} className="mt-1" /></div>
             <div><Label>Website</Label><Input value={form?.website ?? ''} onChange={(e: any) => setForm({ ...form, website: e?.target?.value ?? '' })} className="mt-1" /></div>
             <div><Label>Arrival Time</Label><Input type="time" value={form?.arrivalTime ?? ''} onChange={(e: any) => setForm({ ...form, arrivalTime: e?.target?.value ?? '' })} className="mt-1" /></div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><Label>Total Amount</Label><Input type="number" value={form?.totalAmount ?? 0} onChange={(e: any) => setForm({ ...form, totalAmount: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>
               <div><Label>Deposit Paid</Label><Input type="number" value={form?.depositPaid ?? 0} onChange={(e: any) => setForm({ ...form, depositPaid: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>
             </div>

@@ -21,8 +21,11 @@ import {
   ArrowRight, BarChart3, CheckCircle2, Download, Gift, Hourglass,
   Mail, RefreshCw, TrendingUp, UserCheck, UserX, Users,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { EventData } from '@/types/firestore';
 import { formatMoney } from '@/lib/currency';
+import { rsvpCounts, effectiveRsvp } from '@/lib/rsvp';
+import { csvEscape } from '@/lib/utils';
 
 const ReportCharts = dynamic(() => import('./report-charts'), { ssr: false, loading: () => <div className="h-72 animate-pulse rounded-2xl bg-muted/50" /> });
 
@@ -96,16 +99,25 @@ export function ReportsClient() {
     const acc: ReportSnapshot = { ...EMPTY };
     for (const ev of events.slice(0, MAX_AGGREGATE_EVENTS)) {
       try {
-        const [g, t, b, gi] = await Promise.all([
+        const [g, t, b, gi, inv] = await Promise.all([
           getDocs(collection(db, 'events', ev.id, 'guests')),
           getDocs(collection(db, 'events', ev.id, 'tasks')),
           getDocs(collection(db, 'events', ev.id, 'budget')),
           getDocs(collection(db, 'events', ev.id, 'gifts')),
+          getDocs(collection(db, 'events', ev.id, 'invites')),
         ]);
+        // Public-link responses live on the invite docs, keyed by guestId —
+        // build a lookup so RSVP tallies match the single-event view.
+        const inviteByGuest = new Map<string, { rsvp?: string; respondedAt?: unknown }>();
+        inv.forEach((doc) => {
+          const d = doc.data() as { guestId?: string; rsvp?: string; respondedAt?: unknown };
+          if (d?.guestId) inviteByGuest.set(d.guestId, d);
+        });
         g.forEach((doc) => {
           const d: any = doc.data();
           acc.guestsTotal += 1;
-          const rsvp = d?.rsvp ?? 'pending';
+          const invite = d ? inviteByGuest.get(d.guestId ?? doc.id) : undefined;
+          const rsvp = invite?.respondedAt && invite.rsvp ? invite.rsvp : (d?.rsvp ?? 'pending');
           if (rsvp === 'confirmed') acc.confirmed += 1;
           else if (rsvp === 'declined') acc.declined += 1;
           else acc.pending += 1;
@@ -139,11 +151,13 @@ export function ReportsClient() {
   }, [scope, eventsLoading, fetchAggregate]);
 
   // Single-event snapshot from live hook data
-  const single: ReportSnapshot = useMemo(() => ({
+  const single: ReportSnapshot = useMemo(() => {
+    const rsvp = rsvpCounts(guests, invites);
+    return {
     guestsTotal: guests.length,
-    confirmed: guests.filter((g: any) => g.rsvp === 'confirmed').length,
-    pending: guests.filter((g: any) => (g.rsvp ?? 'pending') === 'pending').length,
-    declined: guests.filter((g: any) => g.rsvp === 'declined').length,
+    confirmed: rsvp.confirmed,
+    pending: rsvp.pending,
+    declined: rsvp.declined,
     invitesSent: guests.filter((g: any) => g.inviteSentAt || g.inviteToken).length,
     vipCount: guests.filter((g: any) => g.isVIP).length,
     tasksDone: tasks.filter((t: any) => t.status === 'done').length,
@@ -155,7 +169,8 @@ export function ReportsClient() {
     giftsPledged: gifts.filter((g: any) => g.status === 'pending').reduce((s: number, g: any) => s + (Number(g.amount) || 0), 0),
     vendorsTotal: vendors.reduce((s: number, v: any) => s + (Number(v.totalAmount) || 0), 0),
     vendorPaid: vendors.reduce((s: number, v: any) => s + (Number(v.depositPaid) || 0), 0),
-  }), [guests, tasks, budgetItems, gifts, vendors]);
+    };
+  }, [guests, invites, tasks, budgetItems, gifts, vendors]);
 
   const report = scope === 'all' ? agg : single;
   const loading = eventsLoading || (scope === 'all' && aggLoading);
@@ -203,8 +218,10 @@ export function ReportsClient() {
     if (scope === 'all') return;
     const header = 'Name,Email,RSVP,Dietary,VIP,Invite Sent\n';
     const rows = guests.map((g: any) =>
-      [g.name, g.email ?? '', g.rsvp ?? 'pending', g.dietary ?? 'none', g.isVIP ? 'yes' : 'no', g.inviteSentAt || g.inviteToken ? 'yes' : 'no']
-        .map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')
+      // RSVP column mirrors the UI: public invite-link responses (invite docs)
+      // take precedence over the host-set guest.rsvp field — see lib/rsvp.ts.
+      [g.name, g.email ?? '', effectiveRsvp(g, invites), g.dietary ?? 'none', g.isVIP ? 'yes' : 'no', g.inviteSentAt || g.inviteToken ? 'yes' : 'no']
+        .map(csvEscape).join(',')
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -213,6 +230,7 @@ export function ReportsClient() {
     a.download = `guest-report-${scope}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success('Guest report exported.');
   };
 
   const rsvpRate = report.guestsTotal > 0 ? Math.round((report.confirmed / report.guestsTotal) * 100) : 0;
@@ -294,7 +312,7 @@ export function ReportsClient() {
         {/* ── Guest report table (single-event mode) ─────────────── */}
         {scope !== 'all' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="glass-strong rounded-2xl shadow-[var(--shadow-md)]">
-            <div className="flex items-center justify-between border-b border-border/50 px-6 py-4">
+            <div className="flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <div>
                 <h2 className="font-display text-lg font-semibold">Guest report</h2>
                 <p className="text-xs text-muted-foreground">
@@ -320,7 +338,7 @@ export function ReportsClient() {
                 </p>
               ) : (
                 guests.slice(0, 50).map((g: any) => (
-                  <div key={g.id} className="flex items-center gap-3 px-6 py-3">
+                  <div key={g.id} className="flex items-center gap-3 px-4 py-3 sm:px-6">
                     <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${g.rsvp === 'confirmed' ? 'bg-emerald-500' : g.rsvp === 'declined' ? 'bg-rose-500' : 'bg-slate-400'}`}>
                       {(g.name || '?').charAt(0).toUpperCase()}
                     </div>

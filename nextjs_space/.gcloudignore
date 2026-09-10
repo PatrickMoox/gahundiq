@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+.git/
+.github/
+.env.local
+.env*.local
+*.log
+tsconfig.tsbuildinfo
+STYLE_GUIDE.md
+DEPLOY*.md
+.gcloudignore

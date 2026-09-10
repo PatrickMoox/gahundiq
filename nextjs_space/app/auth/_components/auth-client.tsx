@@ -181,7 +181,7 @@ export function AuthClient() {
         </Link>
 
         <div className="flex flex-1 items-center justify-center px-4 py-16">
-          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="glass-strong w-full max-w-md rounded-3xl p-8 shadow-[var(--shadow-lg)]">
+          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="glass-strong w-full max-w-md rounded-3xl p-6 shadow-[var(--shadow-lg)] sm:p-8">
             <div className="mb-6 text-center">
               <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-violet-600 shadow-[var(--shadow-glow)]">
                 <Logo className="h-8 w-8" />

@@ -29,7 +29,7 @@ function eventDate(e: any): Date | null {
 export function DashboardClient() {
   const router = useRouter();
   const { user } = useAuth();
-  const { subscription } = useSubscription();
+  const { subscription } = useSubscription(user?.uid);
   const [events, setEvents] = useState<EventData[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState<number | null>(null);
@@ -50,9 +50,18 @@ export function DashboardClient() {
         // No orderBy in the query: where+orderBy on different fields requires a
         // composite index. Sort client-side instead (same fix as subcollections).
         const q = query(collection(db, 'events'), where('hostId', '==', user!.uid), limit(50));
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() } as EventData));
-        setEvents(data);
+        // Collaboration: ceremonies shared with me as a co-planner (array-contains
+        // is a single-field constraint — no composite index needed).
+        const qShared = query(collection(db, 'events'), where('collaboratorIds', 'array-contains', user!.uid), limit(50));
+        const [snapshot, sharedSnapshot] = await Promise.all([
+          getDocs(q).catch(() => null),
+          getDocs(qShared).catch(() => null),
+        ]);
+        const owned = (snapshot?.docs ?? []).map((d: any) => ({ id: d.id, ...d.data() } as EventData));
+        const shared = (sharedSnapshot?.docs ?? [])
+          .map((d: any) => ({ id: d.id, ...d.data() } as EventData))
+          .filter((e) => e.hostId !== user!.uid); // host-owned ones are already in `owned`
+        setEvents([...owned, ...shared]);
       } catch {
         setEvents([]);
       }
@@ -207,7 +216,7 @@ export function DashboardClient() {
                 ) : (
                   dated.map((event: any) => (
                     <motion.div key={event.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
-                      className="group flex cursor-pointer items-center gap-4 px-6 py-4 transition-colors hover:bg-primary/5"
+                      className="group flex cursor-pointer items-center gap-4 px-4 py-4 transition-colors hover:bg-primary/5 sm:px-6"
                       onClick={() => router.push(`/events/${event.id}`)}>
                       <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl text-white shadow-sm ${event.tier === 'premium' ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'bg-gradient-to-br from-primary to-violet-600'}`}>
                         <Calendar className="h-6 w-6" />
@@ -217,6 +226,9 @@ export function DashboardClient() {
                           <h3 className="truncate font-medium">{event.title}</h3>
                           {event.tier === 'premium' && (
                             <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-500">Premium</span>
+                          )}
+                          {event.hostId !== user?.uid && (
+                            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">Shared with you</span>
                           )}
                           {now != null && event._date && event._date.getTime() <= now && (
                             <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Past</span>

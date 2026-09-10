@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { doc, getDoc } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
+import { formatEventDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import type { Vendor, TimelineItem } from '@/types/firestore';
 import {
@@ -56,7 +57,7 @@ export function VendorPassClient({ token }: { token: string }) {
           </div>
           <h1 className="font-display text-3xl font-bold tracking-tight">{event?.title}</h1>
           <div className="mt-2 flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{event?.date instanceof Date ? event.date.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'TBD'}</span>
+            <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{formatEventDate(event?.date)}</span>
             <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{event?.venue}</span>
           </div>
         </div>

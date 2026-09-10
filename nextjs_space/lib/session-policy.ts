@@ -5,7 +5,7 @@
 // expiry, concurrent-device eviction, revocation) is derived from SESSION_POLICY
 // below. Change policy here, never in call sites.
 //
-// Model: a "session" is a per-device record at `sessions/{uid}/{deviceId}`.
+// Model: a "session" is a per-device record at `sessions/{uid}/devices/{deviceId}`.
 //   - A stable random deviceId is kept in localStorage, so reloads reuse the
 //     same record while different browsers/devices open their own.
 //   - `lastActiveAt` is refreshed by a visibility-aware heartbeat (hidden tabs

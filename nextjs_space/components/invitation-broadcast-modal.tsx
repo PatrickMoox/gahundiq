@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { doc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { arrayUnion, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -48,18 +48,18 @@ export function InvitationBroadcastModal({
 
     try {
       await updateDoc(doc(db, 'events', eventId), {
-        invitationBroadcasts: [
-          {
-            sentAt: serverTimestamp(),
-            sentBy: hostId,
-            guestCount: pendingGuests,
-            // No email backend is wired yet — this records a LINK broadcast. The
-            // reference is the real shareable invitation path (never a fabricated
-            // "sim_" id).
-            method: 'link',
-            reference: `/invite/${eventId}`,
-          },
-        ],
+        // APPEND (never replace) — this keeps the full broadcast history on the
+        // event; replacing the array would silently erase previous broadcasts.
+        invitationBroadcasts: arrayUnion({
+          sentAt: serverTimestamp(),
+          sentBy: hostId,
+          guestCount: pendingGuests,
+          // No email backend is wired yet — this records a LINK broadcast. The
+          // reference is the real shareable invitation path (never a fabricated
+          // "sim_" id).
+          method: 'link',
+          reference: `/invite/${eventId}`,
+        }),
         updatedAt: serverTimestamp(),
       });
       setSent(true);

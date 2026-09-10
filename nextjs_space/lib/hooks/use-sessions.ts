@@ -41,7 +41,7 @@ export function useSessions(userId?: string | null) {
     const currentDeviceId = getOrCreateDeviceId();
 
     return onSnapshot(
-      query(collection(db, 'sessions', userId), limit(50)),
+      query(collection(db, 'sessions', userId, 'devices'), limit(50)),
       (snapshot: any) => {
         const now = Date.now();
         const rows = snapshot.docs.map((d: any) => {

@@ -1,12 +1,17 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Invitation files: public read (shared via links), owner-only write
+    // Invitation files: public read (shared via links), event-host-only write.
+    // The client-declared `hostId` metadata is NOT trusted on create — any
+    // signed-in user could claim it and squat files under another event's
+    // namespace. Create is authorized by a cross-service lookup of the event's
+    // host in Firestore (firestore.get()); the metadata must still match the
+    // caller so update/delete ownership (below) stays truthful.
     match /invitations/{eventId}/{filename} {
       allow read: if true;
 
-      // On create: user must be authenticated and must declare themselves as the owner
       allow create: if request.auth != null
+        && firestore.get(/databases/(default)/documents/events/$(eventId)).data.hostId == request.auth.uid
         && request.metadata.hostId == request.auth.uid
         && request.resource.size < 10 * 1024 * 1024; // 10 MB max
 
@@ -15,19 +20,24 @@ service firebase.storage {
         && resource.metadata.hostId == request.auth.uid;
     }
 
-    // Event cover images
+    // Event cover images (reserved prefix; not written by the app yet).
+    // Same cross-service host verification as /invitations above.
     match /covers/{eventId}/{filename} {
       allow read: if true;
       allow create: if request.auth != null
+        && firestore.get(/databases/(default)/documents/events/$(eventId)).data.hostId == request.auth.uid
         && request.metadata.hostId == request.auth.uid
         && request.resource.size < 10 * 1024 * 1024;
       allow update, delete: if request.auth != null
         && resource.metadata.hostId == request.auth.uid;
     }
 
-    // Default: authenticated users only
+    // Default: deny everything not explicitly matched above. The app only
+    // reads/writes `invitations/` (plus the reserved `covers/` path), so the
+    // previous authenticated-everything fallback would have let ANY signed-in
+    // user read or overwrite arbitrary objects outside those prefixes.
     match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

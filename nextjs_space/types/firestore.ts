@@ -2,6 +2,15 @@ export type EventType = 'wedding' | 'birthday' | 'corporate' | 'memorial' | 'bab
 export type Tier = 'free' | 'premium';
 
 /**
+ * Event sections a host can open/close per collaborator. Money sections
+ * ('vendors', 'budget') are HIDDEN from collaborators by default — see
+ * lib/collab.ts (client mirror) and firestore.rules (enforcement).
+ */
+export type ShareableSection = 'timeline' | 'vendors' | 'guests' | 'seating' | 'tasks' | 'budget';
+/** uid → section → shared? Absent section falls back to the safe default. */
+export type CollaboratorAccess = Partial<Record<ShareableSection, boolean>>;
+
+/**
  * ISO 4217 currency stored per event. Optional for backward compatibility —
  * events created before multi-currency have no field and render as USD.
  */
@@ -29,8 +38,21 @@ export interface EventData {
   invitationUrl?: string;
   invitationName?: string;
   invitationUploadedAt?: any;
+  /** External online invitation link (Canva, Paperless Post, …) — host-set, validated https?:// by the rules. */
+  onlineInvitationUrl?: string;
+  /** Optional display label for the online invitation, e.g. "Canva Invite". */
+  onlineInvitationLabel?: string;
   invitationBroadcasts?: InviteBroadcast[];
   collaboratorIds?: string[];
+  /** uid → self-reported display name, written by the collaborator on join. */
+  collaboratorNames?: Record<string, string>;
+  /**
+   * Per-collaborator section visibility (host-controlled). Missing entry =
+   * the safe default: core sections shared, money sections (budget, vendors)
+   * hidden. See lib/collab.ts for the client mirror and firestore.rules for
+   * the enforcement — the RULES are the authority, the UI only mirrors them.
+   */
+  collaboratorAccess?: Record<string, CollaboratorAccess>;
   tier: Tier;
   /** ISO 4217 code chosen at event creation (auto-detected, manually overridable). */
   currency?: CurrencyCode;
@@ -184,7 +206,7 @@ export interface CashGift {
 
 /**
  * Device session governed by the session policy (see lib/session-policy.ts).
- * One record per device at `sessions/{uid}/{deviceId}`. The doc id IS the
+ * One record per device at `sessions/{uid}/devices/{deviceId}`. The doc id IS the
  * stable device id; a record exists while that device holds a session. Writers
  * are restricted to the owner; the client only ever writes the heartbeat /
  * revocation fields (see firestore.rules).
@@ -221,6 +243,37 @@ export interface AddonPurchase {
   currency: string;
   reference?: string;
   at: any;
+}
+
+/**
+ * Collaboration (Phase 1): an invite-by-link for event co-planners, e.g. the
+ * groom joining the bride's ceremony. Doc id IS the 40-char capability token.
+ */
+export interface CollabInvite {
+  eventId: string;
+  /** Title snapshot so the accept screen can show what you're joining. */
+  eventTitle?: string;
+  invitedBy: string;
+  invitedByName?: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  createdAt?: any;
+  expiresAt?: any;
+  acceptedBy?: string;
+  acceptedAt?: any;
+}
+
+/**
+ * Written by the invitee when accepting an invite. Its existence (verified
+ * against the accepted invite via getAfter in the rules) is what authorizes
+ * the invitee's self-join write on `events/{eventId}.collaboratorIds`.
+ */
+export interface CollabClaim {
+  eventId: string;
+  uid: string;
+  /** Self-reported display name shown to the host in the collaborators panel. */
+  displayName: string;
+  token: string;
+  createdAt?: any;
 }
 
 export interface Subscription {

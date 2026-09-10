@@ -117,9 +117,15 @@ export function useCashGifts(eventId: string) {
   const addGift = useCallback(async (gift: Partial<CashGift>) => {
     const db = getFirestoreClient();
     if (!db) throw new Error('Firestore is not configured.');
+    // The rules only accept positive pledges (hasOnlyPublicGiftFields) — fail
+    // loudly here instead of surfacing a confusing permission-denied later.
+    const amount = Number(gift.amount ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('Gift amount must be greater than zero.');
+    }
     const created = await addDoc(collection(db, 'events', eventId, 'gifts'), {
       guestName: gift.guestName ?? 'Anonymous', guestEmail: gift.guestEmail ?? null,
-      amount: gift.amount ?? 0, currency: gift.currency ?? 'USD', message: gift.message ?? '',
+      amount, currency: gift.currency ?? 'USD', message: gift.message ?? '',
       giftType: gift.giftType ?? 'cash', status: 'pending', createdAt: new Date(),
     });
     return { ...gift, id: created.id, status: 'pending' } as CashGift;
@@ -129,7 +135,9 @@ export function useCashGifts(eventId: string) {
 
 export function useSeatingChart(eventId: string) {
   const { user } = useAuth();
-  const [chart, setChart] = useState<SeatingChart>({ id: 'main', eventId, name: 'Main Reception', tables: [], unassignedGuests: [], createdAt: new Date(), updatedAt: new Date() });
+  // Deterministic initial state (no `new Date()` — the value is never rendered
+  // before the snapshot lands, and SSR renders client components too).
+  const [chart, setChart] = useState<SeatingChart>({ id: 'main', eventId, name: 'Main Reception', tables: [], unassignedGuests: [], createdAt: null, updatedAt: null });
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const db = getFirestoreClient();

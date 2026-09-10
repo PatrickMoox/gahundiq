@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
+import { formatEventDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { CashGiftModal } from '@/components/cash-gift-modal';
 import { toast } from 'sonner';
@@ -46,7 +47,7 @@ export function GiftPageClient({ eventId }: { eventId: string }) {
             </div>
             <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{event?.title}</h1>
             <div className="mt-3 flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{event?.date instanceof Date ? event.date.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'TBD'}</span>
+              <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{formatEventDate(event?.date)}</span>
               <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{event?.venue}</span>
             </div>
           </motion.div>
@@ -76,10 +77,10 @@ export function GiftPageClient({ eventId }: { eventId: string }) {
           if (!db) return;
           addDoc(collection(db, 'events', eventId, 'gifts'), {
             guestName: data?.guestName ?? 'Anonymous',
-            guestEmail: data?.guestEmail,
+            guestEmail: data?.guestEmail ?? null,
             amount: data?.amount ?? 0,
             currency: event?.currency ?? 'USD',
-            message: data?.message,
+            message: data?.message ?? '',
             giftType: data?.giftType ?? 'cash',
             status: 'pending',
             createdAt: new Date(),

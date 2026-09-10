@@ -28,6 +28,15 @@ export function GiftsTab({ eventId, event }: { eventId: string; event: EventData
   const fees = useMemo(() => (gifts ?? []).reduce((s: number, g: CashGift) => s + (g?.platformFee ?? 0), 0), [gifts]);
   const giftUrl = typeof window !== 'undefined' ? `${window.location.origin}/gift/${eventId}` : '';
 
+  const copyLink = async () => {
+    try {
+      await navigator?.clipboard?.writeText?.(giftUrl);
+      toast.success('Copied!');
+    } catch {
+      toast.error('Could not copy the link — please copy it manually.');
+    }
+  };
+
   const shareLink = async () => {
     try {
       if (navigator?.share) {
@@ -104,7 +113,7 @@ export function GiftsTab({ eventId, event }: { eventId: string; event: EventData
           <div className="flex flex-col items-center gap-4 py-4">
             {giftUrl && <QRCodeCanvas value={giftUrl} size={200} />}
             <p className="break-all text-center text-xs text-muted-foreground">{giftUrl}</p>
-            <Button onClick={() => { try { navigator?.clipboard?.writeText?.(giftUrl); toast.success('Copied!'); } catch {} }}>Copy Link</Button>
+            <Button onClick={copyLink}>Copy Link</Button>
           </div>
         </DialogContent>
       </Dialog>

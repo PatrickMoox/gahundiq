@@ -6,6 +6,7 @@ import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, setDoc, up
 import { useAuth } from '@/lib/auth-context';
 import { useAdminDirectory, type DirectoryUser } from '@/lib/hooks/use-subscription';
 import { getFirestoreClient } from '@/lib/firebase';
+import { csvEscape } from '@/lib/utils';
 import { Navbar } from '@/components/navbar';
 import { SiteFooter } from '@/components/site-footer';
 import { Badge } from '@/components/ui/badge';
@@ -291,7 +292,8 @@ export function AdminClient() {
   const exportEventsCSV = () => {
     const header = 'Event,Host,Tier,Guests,Date,Venue\n';
     const rows = allEvents.map((e) =>
-      [e.title, hostEmailOf(e.hostId), e.tier, String(e.guestCount), e.date ? e.date.toISOString().slice(0, 10) : '', e.venue].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')
+      // csvEscape neutralizes spreadsheet formula injection — see lib/utils.ts.
+      [e.title, hostEmailOf(e.hostId), e.tier, String(e.guestCount), e.date ? e.date.toISOString().slice(0, 10) : '', e.venue].map(csvEscape).join(',')
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -406,7 +408,8 @@ export function AdminClient() {
   const exportUsersCSV = () => {
     const header = 'Email,Name,Tier,Status,Events\n';
     const rows = users.map((u) =>
-      [u.email ?? '', u.displayName ?? '', u.subscription?.tier ?? 'none', u.subscription?.status ?? '-', String(userEvents[u.id]?.length ?? '-')].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')
+      // csvEscape neutralizes spreadsheet formula injection — see lib/utils.ts.
+      [u.email ?? '', u.displayName ?? '', u.subscription?.tier ?? 'none', u.subscription?.status ?? '-', String(userEvents[u.id]?.length ?? '-')].map(csvEscape).join(',')
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

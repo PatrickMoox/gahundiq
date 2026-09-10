@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { TimelineItem } from '@/types/firestore';
+import { toast } from 'sonner';
 import { Plus, Clock, Trash2, Edit2, GripVertical } from 'lucide-react';
 
 const TRACKS = [
@@ -43,16 +44,29 @@ export function TimelineTab({ eventId }: { eventId: string }) {
     setShowForm(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form?.title?.trim()) return;
     const track = TRACKS.find((t: any) => t?.name === form?.track);
     const data = { ...form, color: track?.color ?? form?.color };
-    if (editingId) {
-      updateItem?.(editingId, data);
-    } else {
-      addItem?.(data);
+    try {
+      if (editingId) {
+        await updateItem?.(editingId, data);
+      } else {
+        await addItem?.(data);
+      }
+      setShowForm(false);
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not save the timeline item.');
     }
-    setShowForm(false);
+  };
+
+  const handleDelete = async (id?: string) => {
+    if (!id) return;
+    try {
+      await deleteItem?.(id);
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not delete the timeline item.');
+    }
   };
 
   const filtered = filterTrack === 'all' ? items : (items ?? []).filter((i: TimelineItem) => i?.track === filterTrack);
@@ -93,9 +107,9 @@ export function TimelineTab({ eventId }: { eventId: string }) {
                 <p className="truncate font-medium">{item?.title}</p>
                 {item?.assignedTo && <p className="text-xs text-muted-foreground">Assigned: {item?.assignedTo}</p>}
               </div>
-              <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="flex gap-1 sm:opacity-0 transition-opacity group-hover:opacity-100">
                 <Button variant="ghost" size="sm" onClick={() => openEdit(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                <Button variant="ghost" size="sm" onClick={() => deleteItem?.(item?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(item?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
               </div>
             </motion.div>
           ))}
