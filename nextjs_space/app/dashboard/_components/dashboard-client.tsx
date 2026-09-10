@@ -9,6 +9,7 @@ import { getFirestoreClient } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useSubscription } from '@/lib/hooks/use-subscription';
 import { Navbar } from '@/components/navbar';
+import { SiteFooter } from '@/components/site-footer';
 import { SessionGovernancePanel } from '@/components/session-governance-panel';
 import { Button } from '@/components/ui/button';
 import {
@@ -299,6 +300,8 @@ export function DashboardClient() {
         {/* ── Session governance ───────────────────────────────────── */}
         <SessionGovernancePanel />
       </div>
+
+      <SiteFooter />
     </div>
   );
 }

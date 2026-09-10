@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth-context';
 import { useEvent } from '@/lib/hooks/use-firestore-data';
 import { Navbar } from '@/components/navbar';
+import { SiteFooter } from '@/components/site-footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -148,6 +149,8 @@ export function EventHubClient({ eventId }: { eventId: string }) {
         confirmedGuests={guests.filter((g) => g.rsvp === 'confirmed').length}
         pendingGuests={guests.filter((g) => (g.rsvp ?? 'pending') === 'pending').length}
       />
+
+      <SiteFooter />
     </div>
   );
 }

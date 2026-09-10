@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Navbar } from '@/components/navbar';
+import { SiteFooter } from '@/components/site-footer';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
 import { CeremonyAddonModal } from '@/components/ceremony-addon-modal';
@@ -238,6 +239,8 @@ const [showStorageInfo, setShowStorageInfo] = useState(false);
           </div>
         </DialogContent>
       </Dialog>
+
+      <SiteFooter />
     </div>
   );
 }

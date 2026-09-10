@@ -15,6 +15,7 @@ import { getFirestoreClient } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useGuests, useTasks, useBudget, useCashGifts, useVendors, useEventInvites } from '@/lib/hooks/use-firestore-data';
 import { Navbar } from '@/components/navbar';
+import { SiteFooter } from '@/components/site-footer';
 import { Button } from '@/components/ui/button';
 import {
   ArrowRight, BarChart3, CheckCircle2, Download, Gift, Hourglass,
@@ -353,6 +354,8 @@ export function ReportsClient() {
           </motion.div>
         )}
       </div>
+
+      <SiteFooter />
     </div>
   );
 }

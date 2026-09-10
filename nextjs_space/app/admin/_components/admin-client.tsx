@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useAdminDirectory, type DirectoryUser } from '@/lib/hooks/use-subscription';
 import { getFirestoreClient } from '@/lib/firebase';
 import { Navbar } from '@/components/navbar';
+import { SiteFooter } from '@/components/site-footer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -786,6 +787,8 @@ export function AdminClient() {
           </div>
         </section>
       </main>
+
+      <SiteFooter />
     </div>
   );
 }

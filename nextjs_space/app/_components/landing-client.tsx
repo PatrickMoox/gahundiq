@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { Navbar } from '@/components/navbar';
 import { ReviewBadge } from '@/components/review-badge';
 import { Button } from '@/components/ui/button';
-import { Logo } from '@/components/logo';
+import { SiteFooter } from '@/components/site-footer';
 import {
   Calendar, Users, Layout, ClipboardList, DollarSign, Gift,
   Clock, Sparkles, ArrowRight, CheckCircle2, Zap, Heart, Mail
@@ -121,7 +121,7 @@ export function LandingClient() {
       </section>
 
       {/* ── Bento features ────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1200px] px-4 py-24">
+      <section id="features" className="mx-auto max-w-[1200px] scroll-mt-16 px-4 py-24">
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} variants={fadeUp} className="mx-auto mb-14 max-w-2xl text-center">
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Everything included</span>
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-5xl">
@@ -144,7 +144,7 @@ export function LandingClient() {
       </section>
 
       {/* ── How it works ──────────────────────────────────────────── */}
-      <section className="relative mx-auto max-w-[900px] px-4 py-24">
+      <section id="how-it-works" className="relative mx-auto max-w-[900px] scroll-mt-16 px-4 py-24">
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} variants={fadeUp} className="mb-14 text-center">
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">How it works</span>
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-5xl">Three steps to <span className="text-gradient">flawless</span></h2>
@@ -167,7 +167,7 @@ export function LandingClient() {
       </section>
 
       {/* ── Pricing teaser ────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1100px] px-4 py-24">
+      <section id="pricing" className="mx-auto max-w-[1100px] scroll-mt-16 px-4 py-24">
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} variants={fadeUp} className="mb-12 text-center">
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Pricing</span>
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-5xl">Simple, <span className="text-gradient">honest</span> plans</h2>
@@ -223,20 +223,7 @@ export function LandingClient() {
       </section>
 
       {/* ── Footer ────────────────────────────────────────────────── */}
-      <footer className="border-t border-border/50">
-        <div className="mx-auto flex max-w-[1200px] flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row">
-          <div className="flex items-center gap-2">
-            <Logo className="h-6 w-6" />
-            <span className="text-sm font-semibold">Gahundiq<span className="text-primary">.</span></span>
-          </div>
-          <div className="flex gap-6">
-            <Link href="/pricing" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Pricing</Link>
-            <Link href="/auth" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Sign In</Link>
-            <Link href="/dashboard" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Dashboard</Link>
-          </div>
-          <p className="text-xs text-muted-foreground">© 2026 Gahundiq. Crafted with care.</p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
