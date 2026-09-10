@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, ArrowRight, Heart, Palmtree, HandHeart, Theater, CreditCard, PartyPopper, Share2, Check } from 'lucide-react';
 import type { GiftType } from '@/types/firestore';
+import { formatMoney } from '@/lib/currency';
 
 const GIFT_TYPES: { type: GiftType; label: string; icon: any; emoji: string }[] = [
   { type: 'cash', label: 'Cash Gift', icon: Heart, emoji: '💝' },
@@ -23,10 +24,12 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   eventId: string;
   eventTitle?: string;
+  /** ISO 4217 code of the gift page's event — preset amounts and totals render in this currency. */
+  currency?: string;
   onGiftSent?: (data: any) => void;
 }
 
-export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, onGiftSent }: Props) {
+export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, currency, onGiftSent }: Props) {
   const [step, setStep] = useState(1);
   const [giftType, setGiftType] = useState<GiftType>('cash');
   const [amount, setAmount] = useState(100);
@@ -87,7 +90,7 @@ export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, onGiftS
                 <div className="mb-3 flex flex-wrap gap-2">
                   {PRESETS.map((p: number) => (
                     <Button key={p} variant={amount === p && !customAmount ? 'default' : 'outline'} size="sm"
-                      onClick={() => { setAmount(p); setCustomAmount(''); }}>${p}</Button>
+                      onClick={() => { setAmount(p); setCustomAmount(''); }}>{formatMoney(p, currency)}</Button>
                   ))}
                 </div>
                 <Input placeholder="Custom amount" type="number" min={1} value={customAmount}
@@ -120,7 +123,7 @@ export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, onGiftS
                   <motion.div initial={{ rotateX: -10 }} animate={{ rotateX: 0 }}
                     className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-center">
                     <p className="text-xs text-muted-foreground">Digital Envelope</p>
-                    <p className="mt-2 font-display text-lg font-bold">${effectiveAmount}</p>
+                    <p className="mt-2 font-display text-lg font-bold">{formatMoney(effectiveAmount, currency)}</p>
                     {message && <p className="mt-1 text-sm italic text-muted-foreground">"{message}"</p>}
                     <p className="mt-1 text-xs text-muted-foreground">— {guestName || 'Anonymous'}</p>
                   </motion.div>
@@ -143,10 +146,10 @@ export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, onGiftS
                   <p className="mt-1 text-xs text-muted-foreground">No payment is processed today — the host sees your pledge as pending.</p>
                 </div>
                 <div className="mb-4 rounded-lg bg-muted/50 p-3 text-sm">
-                  <div className="flex justify-between"><span>Gift Amount</span><span>${effectiveAmount.toFixed(2)}</span></div>
-                  <div className="flex justify-between text-muted-foreground"><span>Processing Fee (2.9% + $0.30)</span><span>${fee.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span>Gift Amount</span><span>{formatMoney(effectiveAmount, currency)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>Processing Fee (2.9% + 0.30)</span><span>{formatMoney(fee, currency)}</span></div>
                   <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold">
-                    <span>Total</span><span>${(effectiveAmount + fee).toFixed(2)}</span>
+                    <span>Total</span><span>{formatMoney(effectiveAmount + fee, currency)}</span>
                   </div>
                 </div>
                 <div className="flex justify-between">
@@ -163,10 +166,10 @@ export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, onGiftS
                   <PartyPopper className="mx-auto mb-3 h-16 w-16 text-primary" />
                 </motion.div>
                 <h2 className="font-display text-2xl font-bold">Gift Pledge Received</h2>
-                <p className="mt-2 text-muted-foreground">Your ${effectiveAmount} pledge has been recorded for the host.</p>
+                <p className="mt-2 text-muted-foreground">Your {formatMoney(effectiveAmount, currency)} pledge has been recorded for the host.</p>
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
                   className="mx-auto mt-4 max-w-xs rounded-xl border border-primary/20 bg-primary/5 p-4">
-                  <p className="font-display text-lg font-bold">${effectiveAmount}</p>
+                  <p className="font-display text-lg font-bold">{formatMoney(effectiveAmount, currency)}</p>
                   {message && <p className="mt-1 text-sm italic text-muted-foreground">"{message}"</p>}
                   <p className="mt-1 text-xs text-muted-foreground">— {guestName}</p>
                 </motion.div>

@@ -7,6 +7,7 @@
  * surfaces in BOTH light and dark themes.
  */
 import React, { useMemo } from 'react';
+import { formatMoney } from '@/lib/currency';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -29,11 +30,13 @@ export default function ReportCharts({
   tasks,
   budget,
   gifts,
+  currency,
 }: {
   rsvp: { name: string; value: number }[];
   tasks: { name: string; value: number }[];
   budget: { name: string; Estimated: number; Actual: number }[];
   gifts: { name: string; total: number }[];
+  currency?: string;
 }) {
   const rsvpTotal = useMemo(() => rsvp.reduce((s, r) => s + r.value, 0), [rsvp]);
   const budgetTotal = useMemo(() => budget.reduce((s, b) => s + b.Actual, 0), [budget]);
@@ -77,7 +80,7 @@ export default function ReportCharts({
       {/* Budget: estimated vs actual */}
       <div className="rounded-2xl border border-border/60 bg-card/70 p-5 backdrop-blur-sm">
         <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Budget by category {budgetTotal > 0 && <span className="normal-case text-primary">· ${budgetTotal.toLocaleString('en-US')} spent</span>}
+          Budget by category {budgetTotal > 0 && <span className="normal-case text-primary">· {formatMoney(budgetTotal, currency)} spent</span>}
         </h3>
         {budget.length === 0 ? (
           <p className="py-16 text-center text-sm text-muted-foreground">No budget items yet.</p>

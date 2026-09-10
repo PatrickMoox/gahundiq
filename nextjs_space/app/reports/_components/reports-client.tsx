@@ -21,6 +21,7 @@ import {
   Mail, RefreshCw, TrendingUp, UserCheck, UserX, Users,
 } from 'lucide-react';
 import type { EventData } from '@/types/firestore';
+import { formatMoney } from '@/lib/currency';
 
 const ReportCharts = dynamic(() => import('./report-charts'), { ssr: false, loading: () => <div className="h-72 animate-pulse rounded-2xl bg-muted/50" /> });
 
@@ -217,13 +218,20 @@ export function ReportsClient() {
   const taskRate = report.tasksTotal > 0 ? Math.round((report.tasksDone / report.tasksTotal) * 100) : 0;
   const budgetPct = report.budgetEstimated > 0 ? Math.min(100, Math.round((report.budgetActual / report.budgetEstimated) * 100)) : 0;
 
+  // Money renders in the selected event's currency. "All events" aggregates
+  // across events (potentially mixed currencies) — we keep the numeric sum and
+  // format with the default USD until per-event conversion exists (see
+  // lib/currency.ts). Single-event scope below is always exact.
+  const activeEvent = scope === 'all' ? null : events.find((e: any) => e.id === scope) ?? null;
+  const reportCurrency = activeEvent?.currency;
+
   const kpis = [
     { label: 'Guests', value: report.guestsTotal, sub: `${report.vipCount} VIP`, icon: Users, tint: 'from-indigo-500 to-violet-600' },
     { label: 'RSVP rate', value: `${rsvpRate}%`, sub: `${report.confirmed} confirmed · ${report.pending} pending`, icon: UserCheck, tint: 'from-emerald-500 to-teal-600' },
     { label: 'Invites sent', value: report.invitesSent, sub: `${report.declined} declined`, icon: Mail, tint: 'from-rose-500 to-pink-600' },
     { label: 'Tasks done', value: `${taskRate}%`, sub: `${report.tasksDone} of ${report.tasksTotal}`, icon: CheckCircle2, tint: 'from-sky-500 to-cyan-600' },
-    { label: 'Budget used', value: `${budgetPct}%`, sub: `$${report.budgetActual.toLocaleString('en-US')} of $${report.budgetEstimated.toLocaleString('en-US')}`, icon: TrendingUp, tint: 'from-amber-500 to-orange-600' },
-    { label: 'Gifts received', value: `$${report.giftsReceived.toLocaleString('en-US')}`, sub: report.giftsPledged > 0 ? `$${report.giftsPledged.toLocaleString('en-US')} pledged` : 'no pledges pending', icon: Gift, tint: 'from-fuchsia-500 to-purple-600' },
+    { label: 'Budget used', value: `${budgetPct}%`, sub: `${formatMoney(report.budgetActual, reportCurrency)} of ${formatMoney(report.budgetEstimated, reportCurrency)}`, icon: TrendingUp, tint: 'from-amber-500 to-orange-600' },
+    { label: 'Gifts received', value: formatMoney(report.giftsReceived, reportCurrency), sub: report.giftsPledged > 0 ? `${formatMoney(report.giftsPledged, reportCurrency)} pledged` : 'no pledges pending', icon: Gift, tint: 'from-fuchsia-500 to-purple-600' },
   ];
 
   return (
@@ -279,7 +287,7 @@ export function ReportsClient() {
 
         {/* ── Charts ─────────────────────────────────────────────── */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="mb-8">
-          <ReportCharts rsvp={rsvpData} tasks={taskData} budget={budgetData} gifts={giftData} />
+          <ReportCharts rsvp={rsvpData} tasks={taskData} budget={budgetData} gifts={giftData} currency={reportCurrency} />
         </motion.div>
 
         {/* ── Guest report table (single-event mode) ─────────────── */}

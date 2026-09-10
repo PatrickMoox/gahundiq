@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import { useCashGifts } from '@/lib/hooks/use-firestore-data';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import type { CashGift } from '@/types/firestore';
+import type { CashGift, EventData } from '@/types/firestore';
+import { formatMoney } from '@/lib/currency';
 import { Gift, DollarSign, Heart, Share2, QrCode } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
@@ -18,8 +19,9 @@ const QRCodeCanvas = dynamic(
 
 const GIFT_ICONS: Record<string, string> = { cash: '💝', honeymoon_fund: '🌴', charity: '🤝', experience: '🎭' };
 
-export function GiftsTab({ eventId }: { eventId: string }) {
+export function GiftsTab({ eventId, event }: { eventId: string; event: EventData | null }) {
   const { gifts } = useCashGifts(eventId);
+  const currency = event?.currency;
   const [showQR, setShowQR] = useState(false);
 
   const total = useMemo(() => (gifts ?? []).reduce((s: number, g: CashGift) => s + (g?.amount ?? 0), 0), [gifts]);
@@ -42,9 +44,9 @@ export function GiftsTab({ eventId }: { eventId: string }) {
       {/* Summary */}
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         {[
-          { label: 'Total Received', value: `$${total.toLocaleString('en-US')}`, icon: DollarSign },
+          { label: 'Total Received', value: formatMoney(total, currency), icon: DollarSign },
           { label: 'Gifts', value: String(gifts?.length ?? 0), icon: Gift },
-          { label: 'Platform Fees', value: `$${fees.toFixed(2)}`, icon: Heart },
+          { label: 'Platform Fees', value: formatMoney(fees, currency), icon: Heart },
         ].map((s: any, i: number) => (
           <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             className="rounded-xl border border-border/50 bg-card p-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
@@ -81,7 +83,7 @@ export function GiftsTab({ eventId }: { eventId: string }) {
                 {gift?.guestEmail && <p className="mt-0.5 text-xs text-muted-foreground">{gift?.guestEmail}</p>}
               </div>
               <div className="text-right">
-                <p className="font-display text-lg font-bold text-primary">${(gift?.amount ?? 0).toLocaleString('en-US')}</p>
+                <p className="font-display text-lg font-bold text-primary">{formatMoney(gift?.amount, currency)}</p>
                 <Badge variant={gift?.status === 'completed' ? 'default' : 'secondary'} className="text-xs capitalize">{gift?.status}</Badge>
               </div>
             </div>

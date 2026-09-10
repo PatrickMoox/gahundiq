@@ -121,8 +121,8 @@ export function EventHubClient({ eventId }: { eventId: string }) {
             <TabsContent value="guests"><GuestsTab eventId={eventId} event={event} /></TabsContent>
             <TabsContent value="seating"><PlanFeatureGate event={event} feature="seating"><SeatingTab eventId={eventId} /></PlanFeatureGate></TabsContent>
             <TabsContent value="tasks"><TasksTab eventId={eventId} /></TabsContent>
-            <TabsContent value="budget"><PlanFeatureGate event={event} feature="budget"><BudgetTab eventId={eventId} /></PlanFeatureGate></TabsContent>
-            <TabsContent value="gifts"><PlanFeatureGate event={event} feature="gifts"><GiftsTab eventId={eventId} /></PlanFeatureGate></TabsContent>
+            <TabsContent value="budget"><PlanFeatureGate event={event} feature="budget"><BudgetTab eventId={eventId} event={event} /></PlanFeatureGate></TabsContent>
+            <TabsContent value="gifts"><PlanFeatureGate event={event} feature="gifts"><GiftsTab eventId={eventId} event={event} /></PlanFeatureGate></TabsContent>
           </Tabs>
         </motion.div>
       </div>

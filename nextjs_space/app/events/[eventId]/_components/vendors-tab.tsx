@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 import { doc, setDoc } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
+import { formatMoney } from '@/lib/currency';
 
 const CATEGORY_ICONS: Record<string, any> = {
   Photographer: Camera, Videographer: Camera, DJ: Music, Caterer: UtensilsCrossed,
@@ -134,7 +135,7 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
                     </div>
                   </div>
                   <Badge variant={balance > 0 ? 'destructive' : 'default'} className="text-xs">
-                    {balance > 0 ? `$${balance.toLocaleString('en-US')} due` : 'Paid'}
+                    {balance > 0 ? `${formatMoney(balance, event?.currency)} due` : 'Paid'}
                   </Badge>
                 </div>
 
@@ -146,7 +147,7 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
 
                 <div className="mb-3">
                   <div className="mb-1 flex justify-between text-xs">
-                    <span>Payment: ${v?.depositPaid?.toLocaleString('en-US')} / ${v?.totalAmount?.toLocaleString('en-US')}</span>
+                    <span>Payment: {formatMoney(v?.depositPaid, event?.currency)} / {formatMoney(v?.totalAmount, event?.currency)}</span>
                     <span>{paidPct}%</span>
                   </div>
                   <Progress value={paidPct} className="h-1.5" />

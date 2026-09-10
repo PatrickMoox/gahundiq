@@ -154,7 +154,7 @@ service cloud.firestore {
         && validEventPlan(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'title', 'eventType', 'date', 'venue', 'coverImageUrl',
-          'guestCount', 'updatedAt', 'collaboratorIds',
+          'guestCount', 'updatedAt', 'collaboratorIds', 'currency',
           'invitationUrl', 'invitationName', 'invitationUploadedAt', 'invitationBroadcasts'
         ]));
       allow delete: if isAdmin() || isEventHost(eventId);

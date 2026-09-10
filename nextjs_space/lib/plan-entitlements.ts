@@ -1,5 +1,4 @@
 import type { EventData, Subscription } from '@/types/firestore';
-
 export type PaidFeature = 'seating' | 'budget' | 'gifts' | 'coordinator' | 'watermarkFree';
 
 export const FREE_LIMITS = {

@@ -9,13 +9,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { BudgetItem } from '@/types/firestore';
+import type { BudgetItem, EventData } from '@/types/firestore';
+import { formatMoney, currencySymbol } from '@/lib/currency';
 import { Plus, DollarSign, TrendingUp, TrendingDown, PieChart, Download, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const BudgetCharts = dynamic(() => import('./budget-charts'), { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-lg bg-muted" /> });
 
-export function BudgetTab({ eventId }: { eventId: string }) {
+export function BudgetTab({ eventId, event }: { eventId: string; event: EventData | null }) {
+  const currency = event?.currency;
   const { items, addItem, deleteItem } = useBudget(eventId);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0 });
@@ -54,9 +56,9 @@ export function BudgetTab({ eventId }: { eventId: string }) {
       {/* Summary Cards */}
       <div className="mb-6 grid gap-4 sm:grid-cols-4">
         {[
-          { label: 'Total Budget', value: `$${(totals?.estimated ?? 0).toLocaleString('en-US')}`, icon: DollarSign, color: 'text-primary' },
-          { label: 'Total Spent', value: `$${(totals?.actual ?? 0).toLocaleString('en-US')}`, icon: TrendingDown, color: 'text-destructive' },
-          { label: 'Remaining', value: `$${(totals?.remaining ?? 0).toLocaleString('en-US')}`, icon: TrendingUp, color: 'text-emerald-500' },
+          { label: 'Total Budget', value: formatMoney(totals?.estimated, currency), icon: DollarSign, color: 'text-primary' },
+          { label: 'Total Spent', value: formatMoney(totals?.actual, currency), icon: TrendingDown, color: 'text-destructive' },
+          { label: 'Remaining', value: formatMoney(totals?.remaining, currency), icon: TrendingUp, color: 'text-emerald-500' },
           { label: '% Used', value: `${pctUsed}%`, icon: PieChart, color: pctUsed > 90 ? 'text-destructive' : 'text-primary' },
         ].map((s: any, i: number) => (
           <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
@@ -98,11 +100,11 @@ export function BudgetTab({ eventId }: { eventId: string }) {
                 <tr key={item?.id} className={`border-b border-border/30 ${idx % 2 === 0 ? 'bg-muted/10' : ''}`}>
                   <td className="px-3 py-2"><Badge variant="outline" className="text-xs">{item?.category}</Badge></td>
                   <td className="px-3 py-2 font-medium">{item?.name}</td>
-                  <td className="px-3 py-2 text-right font-mono">${(item?.estimatedCost ?? 0).toLocaleString('en-US')}</td>
-                  <td className="px-3 py-2 text-right font-mono">${(item?.actualCost ?? 0).toLocaleString('en-US')}</td>
-                  <td className="px-3 py-2 text-right font-mono">${(item?.depositPaid ?? 0).toLocaleString('en-US')}</td>
+                  <td className="px-3 py-2 text-right font-mono">{formatMoney(item?.estimatedCost, currency)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{formatMoney(item?.actualCost, currency)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{formatMoney(item?.depositPaid, currency)}</td>
                   <td className={`px-3 py-2 text-right font-mono ${balance > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                    ${balance.toLocaleString('en-US')}
+                    {formatMoney(balance, currency)}
                   </td>
                   <td className="px-3 py-2"><button onClick={() => deleteItem?.(item?.id)}><Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" /></button></td>
                 </tr>

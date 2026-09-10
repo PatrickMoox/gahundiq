@@ -1,5 +1,12 @@
 export type EventType = 'wedding' | 'birthday' | 'corporate' | 'memorial' | 'baby_shower' | 'potluck' | 'webinar' | 'other';
 export type Tier = 'free' | 'premium';
+
+/**
+ * ISO 4217 currency stored per event. Optional for backward compatibility —
+ * events created before multi-currency have no field and render as USD.
+ */
+export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'RWF' | 'KES' | 'UGX' | 'TZS' | 'NGN' | 'GHS' | 'ZAR' | 'XOF' | 'XAF' | 'ETB' | 'CAD' | 'AED' | 'INR';
+
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high';
 export type Milestone = '12_months' | '6_months' | '3_months' | '1_month' | 'week_of' | 'day_of' | 'post_event';
@@ -25,6 +32,8 @@ export interface EventData {
   invitationBroadcasts?: InviteBroadcast[];
   collaboratorIds?: string[];
   tier: Tier;
+  /** ISO 4217 code chosen at event creation (auto-detected, manually overridable). */
+  currency?: CurrencyCode;
   guestCount: number;
   createdAt: any;
   updatedAt: any;

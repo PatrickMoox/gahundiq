@@ -70,6 +70,7 @@ export function GiftPageClient({ eventId }: { eventId: string }) {
         onOpenChange={setShowGift}
         eventId={eventId}
         eventTitle={event?.title}
+        currency={event?.currency}
         onGiftSent={(data: any) => {
           const db = getFirestoreClient();
           if (!db) return;
@@ -77,7 +78,7 @@ export function GiftPageClient({ eventId }: { eventId: string }) {
             guestName: data?.guestName ?? 'Anonymous',
             guestEmail: data?.guestEmail,
             amount: data?.amount ?? 0,
-            currency: 'USD',
+            currency: event?.currency ?? 'USD',
             message: data?.message,
             giftType: data?.giftType ?? 'cash',
             status: 'pending',

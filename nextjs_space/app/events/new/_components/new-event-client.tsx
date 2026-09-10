@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { addDoc, collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
 import { FREE_LIMITS, PAID_LIMITS, isSubscriptionActive } from '@/lib/plan-entitlements';
+import { detectCurrency, CURRENCIES, DEFAULT_CURRENCY } from '@/lib/currency';
+import type { CurrencyCode } from '@/types/firestore';
 import { useSubscription } from '@/lib/hooks/use-subscription';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -42,6 +44,12 @@ export function NewEventClient() {
   const [date, setDate] = useState('');
   const [venue, setVenue] = useState('');
   const [guestCount, setGuestCount] = useState('50');
+  // Auto-detected from the browser locale after mount (hydration-safe),
+  // overridable via the select in step 2.
+  const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
+  useEffect(() => {
+    setCurrency(detectCurrency());
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !user) router.replace('/auth');
@@ -74,6 +82,7 @@ export function NewEventClient() {
         venue: venue.trim(),
         guestCount: requestedGuests,
         tier: premiumAccount ? 'premium' : 'free',
+        currency,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -86,6 +95,7 @@ export function NewEventClient() {
         eventType,
         date: date ? new Date(`${date}T12:00:00`) : null,
         venue: venue.trim(),
+        currency,
         isActive: true,
         createdAt: new Date(),
       });
@@ -178,6 +188,20 @@ export function NewEventClient() {
                     <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input id="guests" type="number" min="1" value={guestCount} onChange={(e: any) => setGuestCount(e?.target?.value ?? '50')} className="pl-10" />
                   </div>
+                </div>
+                <div>
+                  <Label htmlFor="currency">Currency <span className="text-xs font-normal text-muted-foreground">(auto-detected from your region)</span></Label>
+                  <select
+                    id="currency"
+                    value={currency}
+                    onChange={(e: any) => setCurrency(e?.target?.value as CurrencyCode)}
+                    className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {CURRENCIES.map((c) => (
+                      <option key={c.code} value={c.code}>{c.code} — {c.label} ({c.symbol})</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">Budgets, vendor payments, and gifts will use this currency.</p>
                 </div>
                 <div className="flex justify-between pt-2">
                   <Button variant="outline" onClick={() => setStep(1)} className="gap-2">
