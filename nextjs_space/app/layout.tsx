@@ -6,8 +6,6 @@ import { ChunkLoadErrorHandler } from '@/components/chunk-load-error-handler'
 import { FirebaseAnalytics } from '@/components/firebase-analytics'
 import { AuthProvider } from '@/lib/auth-context'
 
-export const dynamic = 'force-dynamic';
-
 const dmSans = DM_Sans({ subsets: ['latin'], variable: '--font-sans' })
 const jakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-display' })
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' })
