@@ -6,8 +6,9 @@
 
 ## Tech Stack
 
-- **Framework:** Next.js 14 (App Router)
+- **Framework:** Next.js 16 (App Router)
 - **Language:** TypeScript
+- **UI Runtime:** React 19
 - **Styling:** Tailwind CSS + CSS variables (design tokens)
 - **Backend:** Firebase (Firestore, Auth, Storage) — optional, falls back to empty states
 - **Charts:** Recharts

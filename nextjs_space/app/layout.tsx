@@ -13,6 +13,7 @@ const jakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-di
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
 export const metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
   title: 'Gahundiq — Ceremony Planning & Coordination Hub',
   description: 'Plan, coordinate, and execute flawless events with Gahundiq. From invitations to day-of coordination, all in one place.',
   icons: {

@@ -1,5 +1,6 @@
 import { GiftPageClient } from './_components/gift-page-client';
 
-export default function GiftPage({ params }: { params: { eventId: string } }) {
-  return <GiftPageClient eventId={params?.eventId ?? ''} />;
+export default async function GiftPage({ params }: { params: Promise<{ eventId: string }> }) {
+  const { eventId } = await params;
+  return <GiftPageClient eventId={eventId ?? ''} />;
 }

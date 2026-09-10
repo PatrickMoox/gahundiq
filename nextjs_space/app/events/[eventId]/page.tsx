@@ -1,5 +1,6 @@
 import { EventHubClient } from './_components/event-hub-client';
 
-export default function EventPage({ params }: { params: { eventId: string } }) {
-  return <EventHubClient eventId={params?.eventId ?? ''} />;
+export default async function EventPage({ params }: { params: Promise<{ eventId: string }> }) {
+  const { eventId } = await params;
+  return <EventHubClient eventId={eventId ?? ''} />;
 }
