@@ -93,7 +93,7 @@ export function TimelineTab({ eventId }: { eventId: string }) {
                 <p className="truncate font-medium">{item?.title}</p>
                 {item?.assignedTo && <p className="text-xs text-muted-foreground">Assigned: {item?.assignedTo}</p>}
               </div>
-              <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="flex gap-1 sm:opacity-0 transition-opacity group-hover:opacity-100">
                 <Button variant="ghost" size="sm" onClick={() => openEdit(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
                 <Button variant="ghost" size="sm" onClick={() => deleteItem?.(item?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
               </div>

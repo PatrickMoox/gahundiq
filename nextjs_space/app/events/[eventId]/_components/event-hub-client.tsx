@@ -75,17 +75,17 @@ export function EventHubClient({ eventId }: { eventId: string }) {
             </Button>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h1 className="font-display text-2xl font-bold tracking-tight">{event?.title}</h1>
                   <Badge variant="secondary" className="capitalize">{event?.eventType}</Badge>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{event?.date instanceof Date ? event.date.toLocaleDateString('en-US', { timeZone: 'UTC' }) : 'TBD'}</span>
                   <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{event?.venue}</span>
                   <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />{event?.guestCount} guests</span>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="outline" className="gap-2" onClick={() => setShowInvitationUpload(true)}>
                   <MailPlus className="h-4 w-4" /> {event?.invitationUrl ? 'Invitation' : 'Upload Invitation'}
                 </Button>

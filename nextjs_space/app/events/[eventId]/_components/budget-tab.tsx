@@ -121,7 +121,7 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
           <div className="space-y-3">
             <div><Label>Category</Label><Input value={form?.category ?? ''} onChange={(e: any) => setForm({ ...form, category: e?.target?.value ?? '' })} className="mt-1" placeholder="Venue, Catering..." /></div>
             <div><Label>Item Name</Label><Input value={form?.name ?? ''} onChange={(e: any) => setForm({ ...form, name: e?.target?.value ?? '' })} className="mt-1" /></div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div><Label>Estimated</Label><Input type="number" value={form?.estimatedCost ?? 0} onChange={(e: any) => setForm({ ...form, estimatedCost: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>
               <div><Label>Actual</Label><Input type="number" value={form?.actualCost ?? 0} onChange={(e: any) => setForm({ ...form, actualCost: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>
               <div><Label>Deposit</Label><Input type="number" value={form?.depositPaid ?? 0} onChange={(e: any) => setForm({ ...form, depositPaid: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>

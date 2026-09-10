@@ -181,7 +181,7 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
             <div><Label>Email</Label><Input value={form?.email ?? ''} onChange={(e: any) => setForm({ ...form, email: e?.target?.value ?? '' })} className="mt-1" /></div>
             <div><Label>Website</Label><Input value={form?.website ?? ''} onChange={(e: any) => setForm({ ...form, website: e?.target?.value ?? '' })} className="mt-1" /></div>
             <div><Label>Arrival Time</Label><Input type="time" value={form?.arrivalTime ?? ''} onChange={(e: any) => setForm({ ...form, arrivalTime: e?.target?.value ?? '' })} className="mt-1" /></div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><Label>Total Amount</Label><Input type="number" value={form?.totalAmount ?? 0} onChange={(e: any) => setForm({ ...form, totalAmount: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>
               <div><Label>Deposit Paid</Label><Input type="number" value={form?.depositPaid ?? 0} onChange={(e: any) => setForm({ ...form, depositPaid: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>
             </div>

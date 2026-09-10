@@ -106,8 +106,8 @@ export function CoordinatorClient({ eventId }: { eventId: string }) {
       <div className="mx-auto max-w-[1200px] px-4 py-6">
         {/* Digital Clock */}
         <div className="mb-6 text-center">
-          <ClientOnly fallback={<p className="font-mono text-6xl font-bold md:text-8xl">--:--</p>}>
-            <p className="font-mono text-6xl font-bold md:text-8xl">
+          <ClientOnly fallback={<p className="font-mono text-5xl font-bold sm:text-6xl md:text-8xl">--:--</p>}>
+            <p className="font-mono text-5xl font-bold sm:text-6xl md:text-8xl">
               {now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kigali' })}
             </p>
           </ClientOnly>
@@ -174,7 +174,7 @@ export function CoordinatorClient({ eventId }: { eventId: string }) {
                   animate={{ opacity: 1, y: 0 }}
                   className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
                 >
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs text-white/50">{item?.startTime}</span>
                       <Badge variant="outline" className="border-white/20 text-white/60 text-xs">{item?.track}</Badge>
@@ -237,7 +237,7 @@ export function CoordinatorClient({ eventId }: { eventId: string }) {
                    <Clock className="h-4 w-4 shrink-0 text-white/30" />}
                   <span className="w-24 shrink-0 font-mono text-xs text-white/50">{item?.startTime} – {item?.endTime}</span>
                   <span className="h-4 w-1 shrink-0 rounded-full" style={{ backgroundColor: item?.color }} />
-                  <span className={`flex-1 ${isCompleted ? 'line-through' : ''}`}>{item?.title}</span>
+                  <span className={`min-w-0 flex-1 ${isCompleted ? 'line-through' : ''}`}>{item?.title}</span>
                 </div>
               );
             })}

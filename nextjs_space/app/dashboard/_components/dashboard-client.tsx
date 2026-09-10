@@ -207,7 +207,7 @@ export function DashboardClient() {
                 ) : (
                   dated.map((event: any) => (
                     <motion.div key={event.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
-                      className="group flex cursor-pointer items-center gap-4 px-6 py-4 transition-colors hover:bg-primary/5"
+                      className="group flex cursor-pointer items-center gap-4 px-4 py-4 transition-colors hover:bg-primary/5 sm:px-6"
                       onClick={() => router.push(`/events/${event.id}`)}>
                       <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl text-white shadow-sm ${event.tier === 'premium' ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'bg-gradient-to-br from-primary to-violet-600'}`}>
                         <Calendar className="h-6 w-6" />

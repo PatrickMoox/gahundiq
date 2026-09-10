@@ -157,7 +157,7 @@ export function LandingClient() {
               <div className="glass-strong relative z-10 flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl font-display text-lg font-bold shadow-[var(--shadow-md)]">
                 <span className="text-gradient">{step?.num}</span>
               </div>
-              <div className="pt-1">
+              <div className="min-w-0 flex-1 pt-1">
                 <h3 className="font-display text-xl font-semibold tracking-tight">{step?.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{step?.desc}</p>
               </div>

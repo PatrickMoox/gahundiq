@@ -294,7 +294,7 @@ export function ReportsClient() {
         {/* ── Guest report table (single-event mode) ─────────────── */}
         {scope !== 'all' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="glass-strong rounded-2xl shadow-[var(--shadow-md)]">
-            <div className="flex items-center justify-between border-b border-border/50 px-6 py-4">
+            <div className="flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <div>
                 <h2 className="font-display text-lg font-semibold">Guest report</h2>
                 <p className="text-xs text-muted-foreground">
@@ -320,7 +320,7 @@ export function ReportsClient() {
                 </p>
               ) : (
                 guests.slice(0, 50).map((g: any) => (
-                  <div key={g.id} className="flex items-center gap-3 px-6 py-3">
+                  <div key={g.id} className="flex items-center gap-3 px-4 py-3 sm:px-6">
                     <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${g.rsvp === 'confirmed' ? 'bg-emerald-500' : g.rsvp === 'declined' ? 'bg-rose-500' : 'bg-slate-400'}`}>
                       {(g.name || '?').charAt(0).toUpperCase()}
                     </div>
