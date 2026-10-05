@@ -1,0 +1,12 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^git diff --stat main origin/main && git diff --quiet main origin/main; printf 'tree comparison exit: %s\\\\n' \"\\$\\?\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^git push origin HEAD:refs/heads/copilot/responsive-fixes-5d63ba0$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
