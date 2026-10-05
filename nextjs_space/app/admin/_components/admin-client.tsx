@@ -8,6 +8,7 @@ import { useAdminDirectory, type DirectoryUser } from '@/lib/hooks/use-subscript
 import { getFirestoreClient } from '@/lib/firebase';
 import { csvEscape } from '@/lib/utils';
 import { Navbar } from '@/components/navbar';
+import { AuthGateShell } from '@/components/auth-gate-shell';
 import { SiteFooter } from '@/components/site-footer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -73,8 +74,12 @@ export function AdminClient() {
   const [tierFilter, setTierFilter] = useState<'all' | Tier>('all');
   const [refreshing, setRefreshing] = useState(false);
 
+  // Admin *authorization* only: a signed-in non-admin is bounced to their own
+  // dashboard. A signed-out visitor is handled centrally — AuthProvider sends
+  // protected paths home, so this guard deliberately ignores `!user` (it would
+  // otherwise race that redirect).
   useEffect(() => {
-    if (!loading && (!user || user.role !== 'admin')) router.replace('/dashboard');
+    if (!loading && user && user.role !== 'admin') router.replace('/dashboard');
   }, [loading, router, user]);
 
   const loadPlatformData = useCallback(async () => {
@@ -394,9 +399,10 @@ export function AdminClient() {
     }
   };
 
-  if (loading || !user || user.role !== 'admin') {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Checking admin access...</div>;
-  }
+  // Render gate only — AuthProvider owns signed-out routing (lib/auth-context)
+  // and sends protected paths home, so this neutral shell never shows console
+  // chrome or data to a signed-out (or non-admin) visitor.
+  if (loading || !user || user.role !== 'admin') return <AuthGateShell />;
 
   const stats = [
     { label: 'Registered users', value: String(users.length), detail: directoryLoading ? 'Loading...' : 'Live from Firestore', icon: Users },

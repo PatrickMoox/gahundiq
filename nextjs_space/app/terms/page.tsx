@@ -53,7 +53,7 @@ export default function TermsPage() {
 
       <section className="aurora relative overflow-hidden border-b border-border/50">
         <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-          <h1 className="font-display text-4xl font-bold tracking-tight">Terms of Service</h1>
+          <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">Terms of Service</h1>
           <p className="mt-3 text-sm text-muted-foreground">Last updated: September 2026</p>
         </div>
       </section>

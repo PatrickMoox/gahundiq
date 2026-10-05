@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useEvent, useTimeline, useVendors } from '@/lib/hooks/use-firestore-data';
+import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -24,6 +25,7 @@ function timeToMinutes(t: string): number {
 
 export function CoordinatorClient({ eventId }: { eventId: string }) {
   const router = useRouter();
+  const { user } = useAuth();
   const { event } = useEvent(eventId);
   const { items } = useTimeline(eventId);
   const { vendors } = useVendors(eventId);
@@ -83,6 +85,12 @@ export function CoordinatorClient({ eventId }: { eventId: string }) {
     const m = diff % 60;
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
   };
+
+  // Render gate only — AuthProvider owns signed-out routing (lib/auth-context)
+  // and sends this protected path home. The rules deny the reads, so without
+  // the gate a signed-out visitor would see an empty console for a paint.
+  // Keeps this view's own full-bleed dark shell (no navbar — day-of display).
+  if (!user) return <div className="min-h-screen bg-[#0F0F1A]" />;
 
   if (event && event.tier !== 'premium') {
     return <div className="min-h-screen bg-background p-6"><div className="mx-auto max-w-2xl pt-16"><PlanFeatureGate event={event} feature="coordinator" /></div></div>;

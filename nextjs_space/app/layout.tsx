@@ -3,6 +3,7 @@ import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { ChunkLoadErrorHandler } from '@/components/chunk-load-error-handler'
+import { ConnectivityStatus } from '@/components/connectivity-status'
 import { FirebaseAnalytics } from '@/components/firebase-analytics'
 import { AuthProvider } from '@/lib/auth-context'
 
@@ -45,6 +46,7 @@ export default function RootLayout({
           <FirebaseAnalytics />
           <Toaster />
           <ChunkLoadErrorHandler />
+          <ConnectivityStatus />
         </ThemeProvider>
       </body>
     </html>

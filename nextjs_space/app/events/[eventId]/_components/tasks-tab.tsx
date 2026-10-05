@@ -105,10 +105,15 @@ export function TasksTab({ eventId }: { eventId: string }) {
                           <button onClick={() => cycleStatus(task)} className="mt-0.5 shrink-0">
                             <StatusIcon className={`h-4 w-4 ${task?.status === 'done' ? 'text-primary' : task?.status === 'in_progress' ? 'text-amber-500' : 'text-muted-foreground'}`} />
                           </button>
-                          <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                            <button onClick={() => moveTask(task, 'left')} className="p-0.5"><ChevronLeft className="h-3 w-3" /></button>
-                            <button onClick={() => moveTask(task, 'right')} className="p-0.5"><ChevronRight className="h-3 w-3" /></button>
-                            <button onClick={() => handleDeleteTask(task?.id)} className="p-0.5"><Trash2 className="h-3 w-3 text-destructive" /></button>
+                          {/* Tap-sized + labelled action buttons. They used to be
+                              `opacity-0 group-hover:opacity-100`, which is
+                              invisible AND undiscoverable on touch devices (there
+                              is no hover), so tasks could not be moved/deleted on
+                              a phone. Visible by default, hover-revealed on sm+. */}
+                          <div className="flex gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                            <button aria-label="Move task to the previous milestone" onClick={() => moveTask(task, 'left')} className="p-1.5"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                            <button aria-label="Move task to the next milestone" onClick={() => moveTask(task, 'right')} className="p-1.5"><ChevronRight className="h-3.5 w-3.5" /></button>
+                            <button aria-label={`Delete task ${task?.title ?? ''}`} onClick={() => handleDeleteTask(task?.id)} className="p-1.5"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
                           </div>
                         </div>
                         <p className={`font-medium ${task?.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>{task?.title}</p>

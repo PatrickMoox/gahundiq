@@ -108,8 +108,8 @@ export function TimelineTab({ eventId }: { eventId: string }) {
                 {item?.assignedTo && <p className="text-xs text-muted-foreground">Assigned: {item?.assignedTo}</p>}
               </div>
               <div className="flex gap-1 sm:opacity-0 transition-opacity group-hover:opacity-100">
-                <Button variant="ghost" size="sm" onClick={() => openEdit(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                <Button variant="ghost" size="sm" onClick={() => handleDelete(item?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                <Button variant="ghost" size="sm" aria-label={`Edit ${item?.title ?? 'timeline item'}`} onClick={() => openEdit(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="sm" aria-label={`Delete ${item?.title ?? 'timeline item'}`} onClick={() => handleDelete(item?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
               </div>
             </motion.div>
           ))}
@@ -150,7 +150,9 @@ export function TimelineTab({ eventId }: { eventId: string }) {
                 ))}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            {/* Stacked on phones: two native time inputs side by side inside a
+                p-6 dialog leave ~110px each on a 320px screen. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><Label>Start</Label><Input type="time" value={form?.startTime ?? ''} onChange={(e: any) => setForm({ ...form, startTime: e?.target?.value ?? '' })} className="mt-1" /></div>
               <div><Label>End</Label><Input type="time" value={form?.endTime ?? ''} onChange={(e: any) => setForm({ ...form, endTime: e?.target?.value ?? '' })} className="mt-1" /></div>
             </div>

@@ -52,10 +52,9 @@ export function NewEventClient() {
     setCurrency(detectCurrency());
   }, []);
 
-  useEffect(() => {
-    if (!authLoading && !user) router.replace('/auth');
-  }, [user, authLoading, router]);
-
+  // No auth redirect here on purpose — AuthProvider owns signed-out routing
+  // (protected paths go home). The render gate below keeps the wizard hidden
+  // until the session resolves.
   const handleCreate = async () => {
     if (!title?.trim()) { toast.error('Please enter an event title'); return; }
     const db = getFirestoreClient();

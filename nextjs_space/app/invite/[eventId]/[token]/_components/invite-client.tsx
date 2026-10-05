@@ -63,7 +63,7 @@ export function InviteClient({ eventId, token }: { eventId: string; token: strin
               <MailCheck className="h-8 w-8 text-primary" />
             </div>
             <p className="text-sm uppercase tracking-widest text-primary">You are invited</p>
-            <h1 className="mt-2 font-display text-4xl font-bold tracking-tight">{invite.eventTitle ?? 'Our Ceremony'}</h1>
+            <h1 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">{invite.eventTitle ?? 'Our Ceremony'}</h1>
             <div className="mt-3 flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
               <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{formatEventDate(invite?.eventDate, 'Date to be announced')}</span>
               {invite.eventVenue && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{invite.eventVenue}</span>}

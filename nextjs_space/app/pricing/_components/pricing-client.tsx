@@ -58,7 +58,7 @@ const [showStorageInfo, setShowStorageInfo] = useState(false);
       <div className="mx-auto max-w-[1200px] px-4 py-16">
         <motion.div initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: 0.1 } } }}>
           <motion.div variants={fadeUp} className="mx-auto mb-12 max-w-2xl text-center">
-            <h1 className="font-display text-4xl font-bold tracking-tight">Simple, Transparent Pricing</h1>
+            <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">Simple, Transparent Pricing</h1>
             <p className="mt-3 text-lg text-muted-foreground">A fair price for one ceremony, with room to grow for professional planners.</p>
           </motion.div>
 

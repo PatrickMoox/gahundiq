@@ -22,7 +22,7 @@ export default function AboutPage() {
 
       <section className="aurora relative overflow-hidden border-b border-border/50">
         <div className="mx-auto max-w-3xl px-4 py-16 text-center md:py-20">
-          <h1 className="font-display text-4xl font-bold tracking-tight md:text-5xl">
+          <h1 className="font-display text-3xl font-bold tracking-tight md:text-5xl">
             Planning events should feel <span className="text-gradient">calm</span>, not chaotic
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-muted-foreground">

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useSeatingChart, useGuests } from '@/lib/hooks/use-firestore-data';
 import { Button } from '@/components/ui/button';
@@ -21,8 +21,28 @@ const DIETARY_BADGE: Record<string, { icon: string; label: string }> = {
   kosher: { icon: '☆', label: 'K' },
 };
 
+/** Gap kept between a table and the floor-plan edge. */
+const CANVAS_PAD = 12;
+
+/**
+ * Rendered size (css px) of each table type. Shared by the placement/clamping
+ * logic AND the renderer so the two can never drift apart.
+ */
+function tableSize(type: TableType | undefined): { w: number; h: number } {
+  if (type === 'head') return { w: 180, h: 60 };
+  if (type === 'rectangular') return { w: 180, h: 100 };
+  if (type === 'cocktail') return { w: 70, h: 70 };
+  return { w: 120, h: 120 };
+}
+
+/** Keep a table fully inside the visible floor plan (css px). */
+function clampToCanvas(value: number, size: number, extent: number): number {
+  const max = Math.max(CANVAS_PAD, extent - size - CANVAS_PAD);
+  return Math.min(Math.max(CANVAS_PAD, value), max);
+}
+
 export function SeatingTab({ eventId }: { eventId: string }) {
-  const { chart, setChart } = useSeatingChart(eventId);
+  const { chart, setChart, updateChart } = useSeatingChart(eventId);
   const { guests } = useGuests(eventId);
   const [search, setSearch] = useState('');
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -32,6 +52,15 @@ export function SeatingTab({ eventId }: { eventId: string }) {
   const [newTableCap, setNewTableCap] = useState(8);
   const [assignSeat, setAssignSeat] = useState<{ tableId: string; seatId: string } | null>(null);
   const [dragging, setDragging] = useState<{ tableId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  // The floor plan clips its overflow, so table coordinates must stay inside the
+  // element's real pixel size — which is only ~340px wide on a phone, not the
+  // ~900px the old hardcoded spawn range assumed.
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const canvasBounds = useCallback((): { width: number; height: number } => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    return { width: rect?.width ?? 900, height: rect?.height ?? 500 };
+  }, []);
 
   // Which guests are already assigned
   const assignedGuestIds = useMemo(() => {
@@ -46,22 +75,38 @@ export function SeatingTab({ eventId }: { eventId: string }) {
     return (guests ?? []).filter((g: GuestData) => !assignedGuestIds.has(g?.id ?? '') && (g?.name?.toLowerCase()?.includes(search?.toLowerCase() ?? '') ?? true));
   }, [guests, assignedGuestIds, search]);
 
+  // Persist the chart to Firestore. Local state updates immediately so the UI
+  // stays responsive, and the write is best-effort with a toast on failure.
+  // Without this the seating chart lived in local state only, so EVERY edit
+  // (tables, seats, drags) was silently lost on reload — the persisted
+  // `updateChart` writer in useSeatingChart was never called.
+  const persistTables = useCallback((tables: TableData[]) => {
+    setChart((prev) => ({ ...prev, tables, updatedAt: new Date() }));
+    updateChart({ tables }).catch(() => toast.error('Could not save the seating chart — check your connection.'));
+  }, [setChart, updateChart]);
+
   const addTable = useCallback(() => {
     const name = newTableName?.trim() || `Table ${(chart?.tables?.length ?? 0) + 1}`;
     const cap = newTableCap || 8;
     const seats: Seat[] = Array.from({ length: cap }, (_: any, i: number) => ({
       id: uuidv4(), tableId: uuidv4(), position: i + 1,
     }));
+    // Spawn inside the VISIBLE canvas. The previous `100 + random * 400` ignored
+    // the real size, so on a phone (canvas ≈ 340px wide + overflow-hidden) a new
+    // table was placed outside the viewport with no way to drag it back.
+    const { w, h } = tableSize(newTableType);
+    const bounds = canvasBounds();
     const tbl: TableData = {
       id: uuidv4(), name, type: newTableType, capacity: cap,
-      x: 100 + Math.random() * 400, y: 100 + Math.random() * 200,
+      x: clampToCanvas(CANVAS_PAD + Math.random() * Math.max(1, bounds.width - w - CANVAS_PAD * 4), w, bounds.width),
+      y: clampToCanvas(CANVAS_PAD + Math.random() * Math.max(1, bounds.height - h - CANVAS_PAD * 4), h, bounds.height),
       seats,
     };
     tbl.seats = tbl.seats.map((s: Seat) => ({ ...s, tableId: tbl.id }));
-    setChart({ ...chart, tables: [...(chart?.tables ?? []), tbl], updatedAt: new Date() });
+    persistTables([...(chart?.tables ?? []), tbl]);
     setShowAddTable(false);
     setNewTableName('');
-  }, [chart, setChart, newTableType, newTableName, newTableCap]);
+  }, [chart, persistTables, newTableType, newTableName, newTableCap, canvasBounds]);
 
   const assignGuestToSeat = useCallback((guestId: string) => {
     if (!assignSeat) return;
@@ -78,10 +123,10 @@ export function SeatingTab({ eventId }: { eventId: string }) {
         ),
       };
     });
-    setChart({ ...chart, tables, updatedAt: new Date() });
+    persistTables(tables);
     setAssignSeat(null);
     toast.success(`${guest.name} assigned!`);
-  }, [assignSeat, chart, setChart, guests]);
+  }, [assignSeat, chart, guests, persistTables]);
 
   const removeSeatGuest = useCallback((tableId: string, seatId: string) => {
     const tables = (chart?.tables ?? []).map((t: TableData) => {
@@ -93,13 +138,13 @@ export function SeatingTab({ eventId }: { eventId: string }) {
         ),
       };
     });
-    setChart({ ...chart, tables, updatedAt: new Date() });
-  }, [chart, setChart]);
+    persistTables(tables);
+  }, [chart, persistTables]);
 
   const removeTable = useCallback((tableId: string) => {
-    setChart({ ...chart, tables: (chart?.tables ?? []).filter((t: TableData) => t?.id !== tableId), updatedAt: new Date() });
+    persistTables((chart?.tables ?? []).filter((t: TableData) => t?.id !== tableId));
     if (selectedTable === tableId) setSelectedTable(null);
-  }, [chart, setChart, selectedTable]);
+  }, [chart, persistTables, selectedTable]);
 
   // Simple pointer-based table dragging
   const handlePointerDown = useCallback((e: React.PointerEvent, tableId: string) => {
@@ -113,13 +158,33 @@ export function SeatingTab({ eventId }: { eventId: string }) {
     if (!dragging) return;
     const dx = e.clientX - dragging.startX;
     const dy = e.clientY - dragging.startY;
-    const tables = (chart?.tables ?? []).map((t: TableData) =>
-      t?.id === dragging.tableId ? { ...t, x: dragging.origX + dx, y: dragging.origY + dy } : t
-    );
+    // Clamp to the visible canvas: it clips its overflow, so a table dragged
+    // past an edge (very easy on a phone) would disappear for good.
+    const bounds = canvasBounds();
+    const tables = (chart?.tables ?? []).map((t: TableData) => {
+      if (t?.id !== dragging.tableId) return t;
+      const { w, h } = tableSize(t?.type);
+      return {
+        ...t,
+        x: clampToCanvas(dragging.origX + dx, w, bounds.width),
+        y: clampToCanvas(dragging.origY + dy, h, bounds.height),
+      };
+    });
     setChart({ ...chart, tables, updatedAt: new Date() });
-  }, [dragging, chart, setChart]);
+  }, [dragging, chart, setChart, canvasBounds]);
 
-  const handlePointerUp = useCallback(() => { setDragging(null); }, []);
+  const handlePointerUp = useCallback(() => {
+    // Drag moves update local state for smoothness; persist the final positions
+    // once the pointer is released so the chart survives a reload. Only write
+    // when a table actually moved — a plain click (select) must not hit Firestore.
+    const moved = dragging
+      ? (chart?.tables ?? []).find((t: TableData) => t?.id === dragging.tableId)
+      : undefined;
+    if (dragging && moved && (moved.x !== dragging.origX || moved.y !== dragging.origY)) {
+      updateChart({ tables: chart?.tables ?? [] }).catch(() => toast.error('Could not save the seating chart — check your connection.'));
+    }
+    setDragging(null);
+  }, [dragging, chart, updateChart]);
 
   const selTable = selectedTable ? (chart?.tables ?? []).find((t: TableData) => t?.id === selectedTable) : null;
 
@@ -150,10 +215,12 @@ export function SeatingTab({ eventId }: { eventId: string }) {
         </div>
         <div
           id="seating-canvas"
+          ref={canvasRef}
           className="relative min-h-[500px] overflow-hidden rounded-xl border border-border/50 bg-muted/30"
           style={{ boxShadow: 'var(--shadow-sm)' }}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
         >
           {/* Grid dots */}
           <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
@@ -161,13 +228,16 @@ export function SeatingTab({ eventId }: { eventId: string }) {
           {(chart?.tables ?? []).map((tbl: TableData) => {
             const assigned = (tbl?.seats ?? []).filter((s: Seat) => !!s?.guestId)?.length ?? 0;
             const isSelected = selectedTable === tbl?.id;
-            const w = tbl?.type === 'head' || tbl?.type === 'rectangular' ? 180 : tbl?.type === 'cocktail' ? 70 : 120;
-            const h = tbl?.type === 'head' ? 60 : tbl?.type === 'rectangular' ? 100 : tbl?.type === 'cocktail' ? 70 : 120;
+            // Sizing + clamping share one helper so placement and render agree.
+            const { w, h } = tableSize(tbl?.type);
+            // `touch-none` is applied to the draggable wrapper below: without it a
+            // finger drag scrolls the page instead of moving the table
+            // (touch-action defaults to auto on touch devices).
 
             return (
               <div
                 key={tbl?.id}
-                className={`absolute cursor-grab select-none active:cursor-grabbing`}
+                className={`absolute cursor-grab touch-none select-none active:cursor-grabbing`}
                 style={{ left: tbl?.x ?? 0, top: tbl?.y ?? 0, width: w, zIndex: isSelected ? 10 : 1 }}
                 onPointerDown={(e: React.PointerEvent) => handlePointerDown(e, tbl?.id)}
                 onClick={() => setSelectedTable(isSelected ? null : tbl?.id)}
@@ -208,7 +278,7 @@ export function SeatingTab({ eventId }: { eventId: string }) {
             className="mt-4 rounded-xl border border-border/50 bg-card p-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
             <div className="mb-3 flex items-center justify-between">
               <h4 className="font-semibold">{selTable?.name} — Seats</h4>
-              <Button variant="ghost" size="sm" onClick={() => removeTable(selTable?.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              <Button variant="ghost" size="sm" aria-label={`Remove ${selTable?.name ?? 'table'}`} onClick={() => removeTable(selTable?.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
               {(selTable?.seats ?? []).map((seat: Seat) => (

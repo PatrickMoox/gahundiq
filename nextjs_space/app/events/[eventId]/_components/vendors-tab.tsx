@@ -176,9 +176,9 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
                 </div>
 
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(v)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => generatePass(v)}><Link2 className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDeleteVendor(v?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                  <Button variant="ghost" size="sm" aria-label={`Edit ${v?.name ?? 'vendor'}`} onClick={() => openEdit(v)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="sm" aria-label={`Copy access pass for ${v?.name ?? 'vendor'}`} onClick={() => generatePass(v)}><Link2 className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="sm" aria-label={`Delete ${v?.name ?? 'vendor'}`} onClick={() => handleDeleteVendor(v?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                 </div>
               </motion.div>
             );

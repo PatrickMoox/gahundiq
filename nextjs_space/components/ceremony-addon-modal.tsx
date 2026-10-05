@@ -86,7 +86,10 @@ export function CeremonyAddonModal({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg p-0 overflow-hidden">
+      {/* p-0 + overflow-Y-auto (not overflow-hidden) + max-h from the primitive:
+          the checkout steps are taller than a small phone viewport, and hiding
+          the overflow made the action buttons unreachable. */}
+      <DialogContent className="max-h-[90dvh] overflow-y-auto p-0 sm:max-w-lg">
         <div className="flex gap-1 px-6 pt-5">
           {[1, 2, 3].map((s: number) => (
             <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? 'bg-primary' : 'bg-muted'}`} />

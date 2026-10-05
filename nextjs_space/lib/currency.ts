@@ -42,6 +42,40 @@ function isSupported(code: string): code is CurrencyCode {
 }
 
 /**
+ * Locale REGION (ISO 3166-1 alpha-2, e.g. 'RW', 'KE', 'FR') → currency code.
+ * Only regions for currencies in CURRENCIES are listed; anything else falls
+ * back to USD. This is what `detectCurrency()` must use — a region is NEVER
+ * equal to a currency code, so matching regions against CURRENCIES directly
+ * (the previous behaviour) silently returned USD for every visitor.
+ */
+const REGION_TO_CURRENCY: Record<string, CurrencyCode> = {
+  // USD adopters
+  US: 'USD', EC: 'USD', SV: 'USD', PA: 'USD', PR: 'USD', ZW: 'USD',
+  // EUR (eurozone)
+  DE: 'EUR', FR: 'EUR', ES: 'EUR', IT: 'EUR', NL: 'EUR', BE: 'EUR', AT: 'EUR',
+  IE: 'EUR', PT: 'EUR', FI: 'EUR', GR: 'EUR', LU: 'EUR', SK: 'EUR', SI: 'EUR',
+  LT: 'EUR', LV: 'EUR', EE: 'EUR', MT: 'EUR', CY: 'EUR', HR: 'EUR',
+  // GBP
+  GB: 'GBP',
+  // East African shilling-type currencies
+  RW: 'RWF', KE: 'KES', UG: 'UGX', TZ: 'TZS',
+  // West / Central Africa
+  NG: 'NGN', GH: 'GHS',
+  SN: 'XOF', CI: 'XOF', ML: 'XOF', BF: 'XOF', BJ: 'XOF', TG: 'XOF', NE: 'XOF', GW: 'XOF',
+  CM: 'XAF', GA: 'XAF', CG: 'XAF', TD: 'XAF', CF: 'XAF', GQ: 'XAF',
+  // Southern Africa / North & East Africa
+  ZA: 'ZAR', ET: 'ETB',
+  // Rest of the supported set
+  CA: 'CAD', AE: 'AED', IN: 'INR',
+};
+
+/** Maps a BCP-47 region tag to a supported currency (null when unknown). */
+function currencyForRegion(region: string | undefined): CurrencyCode | null {
+  if (!region) return null;
+  return REGION_TO_CURRENCY[region.toUpperCase()] ?? null;
+}
+
+/**
  * Best-effort currency guess from the browser's locale, e.g.
  * 'en-RW' → RWF, 'fr-FR' → EUR, 'sw-KE' → KES. Returns USD when the region
  * is unknown or the API is unavailable. Browser-only — call inside useEffect.
@@ -58,7 +92,8 @@ export function detectCurrency(): CurrencyCode {
         ? new LocaleCtor(tag).region
         : tag.split('-')[1]?.toUpperCase();
       // Common non-ISO quirks: 'en-GB' works, but 419 (LatAm) etc. won't.
-      if (region && isSupported(region)) return region;
+      const currency = currencyForRegion(region);
+      if (currency) return currency;
     }
   } catch { /* Intl.Locale unavailable or invalid tag — fall through */ }
   return DEFAULT_CURRENCY;

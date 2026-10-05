@@ -14,7 +14,12 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      'inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground',
+      // min-h (not h): consumers add `flex-wrap` for long tab bars (e.g. the
+      // event hub's 7 tabs on a phone). A fixed height clipped every row after
+      // the first, so wrapped triggers spilled outside the pill background.
+      // NOTE: Tailwind v3 has no `min-h-<spacing>` scale (this config doesn't
+      // extend minHeight), so the height must be an arbitrary value.
+      'inline-flex min-h-[2.5rem] items-center justify-center rounded-md bg-muted p-1 text-muted-foreground',
       className
     )}
     {...props}

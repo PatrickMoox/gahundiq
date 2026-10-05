@@ -106,7 +106,9 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-border/50 bg-card" style={{ boxShadow: 'var(--shadow-sm)' }}>
-        <table className="w-full text-sm">
+        {/* min-w keeps seven money columns readable: on a phone they used to be
+            squeezed into unreadable slivers instead of scrolling. */}
+        <table className="w-full min-w-[640px] text-sm">
           <thead><tr className="border-b border-border/50 text-left text-xs text-muted-foreground">
             <th className="px-3 py-2">Category</th><th className="px-3 py-2">Item</th><th className="px-3 py-2 text-right">Estimated</th>
             <th className="px-3 py-2 text-right">Actual</th><th className="px-3 py-2 text-right">Deposit</th><th className="px-3 py-2 text-right">Balance</th><th className="px-3 py-2"></th>
@@ -124,7 +126,7 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
                   <td className={`px-3 py-2 text-right font-mono ${balance > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
                     {formatMoney(balance, currency)}
                   </td>
-                  <td className="px-3 py-2"><button onClick={() => handleDelete(item?.id)}><Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" /></button></td>
+                  <td className="px-3 py-2"><button aria-label={`Delete ${item?.name ?? 'budget item'}`} onClick={() => handleDelete(item?.id)} className="p-1"><Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" /></button></td>
                 </tr>
               );
             })}

@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth-context';
 import { useEvent } from '@/lib/hooks/use-firestore-data';
 import { Navbar } from '@/components/navbar';
+import { AuthGateShell } from '@/components/auth-gate-shell';
 import { SiteFooter } from '@/components/site-footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -60,19 +61,10 @@ export function EventHubClient({ eventId }: { eventId: string }) {
     if (!visible) setActiveTab('timeline');
   }, [isHost, activeTab, event?.collaboratorAccess, user?.uid]);
 
-  useEffect(() => {
-    if (!authLoading && !user) router.replace('/auth');
-  }, [user, authLoading, router]);
-
-  if (authLoading || eventLoading || !user) {
-    return (
-      <div className="min-h-screen"><Navbar />
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        </div>
-      </div>
-    );
-  }
+  // No auth redirect here on purpose: AuthProvider owns signed-out routing and
+  // sends protected paths home. This gate only keeps private event UI off
+  // screen until the session (and the event document) resolve.
+  if (authLoading || eventLoading || !user) return <AuthGateShell />;
 
   if (!event) {
     return (

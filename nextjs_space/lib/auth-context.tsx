@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { GoogleAuthProvider, createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut as firebaseSignOut, updateProfile, type User } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, onSnapshot, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -54,6 +55,22 @@ const AuthContext = createContext<AuthContextType>({
   revokeSession: async () => {},
   signOutAllDevices: async () => {},
 });
+
+/**
+ * Areas that require a session. Everything else is public: the landing and
+ * marketing pages, `/auth`, and the capability-token pages (invite RSVP, gift
+ * pledge, vendor pass, collaborator accept). Keep in step with the Routes table
+ * in README.md.
+ */
+export const PROTECTED_ROUTE_PREFIXES = ['/dashboard', '/events', '/reports', '/admin'] as const;
+
+/** True when `pathname` is inside a signed-in area (exact prefix or nested). */
+export function isProtectedPath(pathname: string | null | undefined): boolean {
+  if (!pathname) return false;
+  return PROTECTED_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -328,6 +345,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => { unsubscribeAuth(); unsubAdminDoc?.(); clearSessionWatch(); stopHeartbeat(); stopPolling(); activateRef.current = null; };
   }, []);
+
+  // ── Signed-out routing — the ONE place that decides where signing out lands ──
+  // Every way a session can end funnels through the auth listener above:
+  // the navbar's "Sign out", an idle timeout, an expiry, a revoke from another
+  // device, an admin action, or a password reset performed elsewhere. All of
+  // them surface here as `loading === false && user === null`, so this single
+  // guard sends the visitor home from ANY protected page.
+  //
+  // Pages must not add their own auth redirects. Duplicated redirects compete
+  // (the losing one wins by effect order) and a page with no guard at all ends
+  // up rendering private UI to a signed-out visitor. Pages only gate their
+  // render with `if (!user) return <AuthGateShell />`.
+  //
+  // `loading` is checked first so nothing redirects while the session is still
+  // resolving, and unverified password accounts (a Firebase session exists but
+  // no app identity yet) go to /auth, which owns the verification panel.
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading || user || !isProtectedPath(pathname)) return;
+    router.replace(verificationEmail ? '/auth' : '/');
+  }, [loading, user, verificationEmail, pathname, router]);
 
   const syncProfile = useCallback(async (firebaseUser: { uid: string; email: string | null; displayName: string | null; photoURL: string | null }) => {
     const db = getFirestoreClient();

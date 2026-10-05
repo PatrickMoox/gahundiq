@@ -15,6 +15,7 @@ import { getFirestoreClient } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useGuests, useTasks, useBudget, useCashGifts, useVendors, useEventInvites } from '@/lib/hooks/use-firestore-data';
 import { Navbar } from '@/components/navbar';
+import { AuthGateShell } from '@/components/auth-gate-shell';
 import { SiteFooter } from '@/components/site-footer';
 import { Button } from '@/components/ui/button';
 import {
@@ -253,6 +254,9 @@ export function ReportsClient() {
     { label: 'Gifts received', value: formatMoney(report.giftsReceived, reportCurrency), sub: report.giftsPledged > 0 ? `${formatMoney(report.giftsPledged, reportCurrency)} pledged` : 'no pledges pending', icon: Gift, tint: 'from-fuchsia-500 to-purple-600' },
   ];
 
+  // Render gate only — AuthProvider owns signed-out routing (lib/auth-context).
+  if (!user) return <AuthGateShell />;
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -339,7 +343,7 @@ export function ReportsClient() {
               ) : (
                 guests.slice(0, 50).map((g: any) => (
                   <div key={g.id} className="flex items-center gap-3 px-4 py-3 sm:px-6">
-                    <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${g.rsvp === 'confirmed' ? 'bg-emerald-500' : g.rsvp === 'declined' ? 'bg-rose-500' : 'bg-slate-400'}`}>
+                    <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${effectiveRsvp(g, invites) === 'confirmed' ? 'bg-emerald-500' : effectiveRsvp(g, invites) === 'declined' ? 'bg-rose-500' : 'bg-slate-400'}`}>
                       {(g.name || '?').charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -350,10 +354,10 @@ export function ReportsClient() {
                       <p className="truncate text-xs text-muted-foreground">{g.email || '—'}</p>
                     </div>
                     <span className={`hidden rounded-full px-2.5 py-1 text-xs font-medium sm:block ${
-                      g.rsvp === 'confirmed' ? 'bg-emerald-500/15 text-emerald-500'
-                      : g.rsvp === 'declined' ? 'bg-rose-500/15 text-rose-500'
+                      effectiveRsvp(g, invites) === 'confirmed' ? 'bg-emerald-500/15 text-emerald-500'
+                      : effectiveRsvp(g, invites) === 'declined' ? 'bg-rose-500/15 text-rose-500'
                       : 'bg-muted text-muted-foreground'}`}>
-                      {g.rsvp ?? 'pending'}
+                      {effectiveRsvp(g, invites)}
                     </span>
                     {g.dietary && g.dietary !== 'none' && (
                       <span className="hidden rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary md:block">{g.dietary}</span>

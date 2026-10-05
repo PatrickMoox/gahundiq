@@ -67,7 +67,10 @@ export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, currenc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg p-0 overflow-hidden">
+      {/* p-0 + overflow-Y-auto (not overflow-hidden) + max-h from the primitive:
+          the multi-step flow is taller than a small phone viewport, and hiding
+          the overflow made the "Record Pledge" button unreachable. */}
+      <DialogContent className="max-h-[90dvh] overflow-y-auto p-0 sm:max-w-lg">
         {/* Progress */}
         <div className="flex gap-1 px-6 pt-5">
           {[1, 2, 3, 4].map((s: number) => (

@@ -39,7 +39,7 @@ export default function HelpPage() {
 
       <section className="aurora relative overflow-hidden border-b border-border/50">
         <div className="mx-auto max-w-3xl px-4 py-16 text-center md:py-20">
-          <h1 className="font-display text-4xl font-bold tracking-tight md:text-5xl">Help &amp; FAQ</h1>
+          <h1 className="font-display text-3xl font-bold tracking-tight md:text-5xl">Help &amp; FAQ</h1>
           <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
             Quick answers about plans, budgets, currencies, and gifts. Can&apos;t find what you need?{' '}
             <a href="mailto:support@gahundiq.com" className="font-medium text-primary hover:underline">Email us</a>.

@@ -218,7 +218,7 @@ export function GuestsTab({ eventId, event }: { eventId: string; event: EventDat
                 {inviteFor(guest) ? <Link2 className="h-3.5 w-3.5" /> : <Mail className="h-3.5 w-3.5" />}
                 {inviteFor(guest) ? 'Copy link' : 'Send invite'}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => handleDelete(guest)} className="text-muted-foreground hover:text-destructive">
+              <Button variant="ghost" size="sm" aria-label={`Remove ${guest?.name ?? 'guest'}`} onClick={() => handleDelete(guest)} className="text-muted-foreground hover:text-destructive">
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>

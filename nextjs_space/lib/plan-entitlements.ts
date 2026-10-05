@@ -15,9 +15,12 @@ export const PAID_LIMITS = {
   storageMb: 2048,
 } as const;
 
-export function canUseFeature(event: EventData, feature: PaidFeature): boolean {
-  if (event.tier === 'premium') return true;
-  return feature === 'watermarkFree' ? false : false;
+/**
+ * Whether a paid feature is unlocked for this event. Free-tier events unlock
+ * no paid features at all — they are bounded by FREE_LIMITS instead.
+ */
+export function canUseFeature(event: EventData, _feature: PaidFeature): boolean {
+  return event.tier === 'premium';
 }
 
 export function getEventLimits(event: EventData) {

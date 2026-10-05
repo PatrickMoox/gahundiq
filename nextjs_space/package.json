@@ -50,9 +50,10 @@
     "uuid": "^14.0.2"
   },
   "browserslist": [
-    "ie >= 11",
-    "> 0.5%",
-    "last 2 versions",
+    "chrome >= 100",
+    "firefox >= 100",
+    "safari >= 15.4",
+    "edge >= 100",
     "not dead"
   ],
   "overrides": {

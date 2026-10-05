@@ -74,6 +74,53 @@ gcloud run services logs tail gahundiq --region us-central1
 gcloud run services update-traffic gahundiq --to-revisions=<revision>=100 --region us-central1
 ```
 
+## Deploy-time environment: `NEXT_PUBLIC_SITE_URL`
+
+`NEXT_PUBLIC_*` values are baked into the client bundle **at build time**, so this
+one must be present in `.env.local` *before* you run the deploy script:
+
+```bash
+NEXT_PUBLIC_SITE_URL=https://your-domain.example   # no trailing slash
+```
+
+It drives `metadataBase` (OG/canonical URLs), `app/robots.ts` and `app/sitemap.ts`.
+When it is empty the app silently falls back to `http://localhost:3000` — the
+script warns about this, but it is easy to miss, so after the first deploy set it
+to the printed `*.run.app` URL (or your custom domain) and redeploy. The value
+travels `scripts/gcp-deploy.sh → --substitutions _SITE_URL → cloudbuild.yaml
+--build-arg → Dockerfile ARG`.
+
+## Health endpoint
+
+`GET /api/health` returns `{"status":"ok","service":"gahundiq","revision":…}` and
+never caches. Cloud Run's default startup probe is TCP-only (it passes as soon as
+something binds `:8080`), so for rollouts that must not serve half-warmed
+revisions, point the probe at it:
+
+```bash
+gcloud run deploy gahundiq --image … --startup-probe httpGet.path=/api/health
+```
+
+It is also what the deploy script prints for a post-deploy smoke test:
+`curl -fsS "$URL/api/health"`.
+
+## Container & runtime hardening (already in the repo)
+
+- **Non-root:** the runner stage runs as the unprivileged `node` user and
+  pre-creates `.next/cache` with the right ownership.
+- **Build args / secrets:** only `NEXT_PUBLIC_*` values are baked in; no service
+  account JSON or server secret ever touches the image (`.dockerignore` /
+  `.gcloudignore` exclude `.env.local`, `.git`, `node_modules`, `.next`).
+- **Resource caps:** the deploy script sets `--memory 1Gi --cpu 1 --cpu-boost
+  --concurrency 80 --min-instances 0 --max-instances 10` so a runaway rollout
+  cannot scale (or bill) without limit.
+- **HTTP headers:** `next.config.js` sets `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, `Permissions-Policy`, HSTS, and immutable caching for
+  `/_next/static/*`. COOP/CSP are intentionally *not* set — Firebase Auth's popup
+  flow needs its opener reference, so add a CSP only with real-browser testing.
+- **Verify the headers** after deploying:
+  `curl -sI "$URL" | grep -iE 'x-frame|referrer|permissions|strict-transport'`
+
 ## Relationship to the other deploy paths in this repo
 
 | Path | Command | Notes |

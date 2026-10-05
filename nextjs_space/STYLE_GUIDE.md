@@ -7,8 +7,11 @@ The root layout, `app/layout.tsx`, is the single place for app-wide providers an
 | Entry | Purpose |
 |-------|---------|
 | `ThemeProvider` | Light/dark mode via `next-themes` |
+| `AuthProvider` | Firebase Auth context (`@/lib/auth-context`) — wraps all app pages |
 | `Toaster` | Global toast notifications via Sonner |
 | `ChunkLoadErrorHandler` | Required — prevents known ChunkLoadError race condition bug |
+| `ConnectivityStatus` | Surfaces offline/degraded connectivity via a shared Sonner toast |
+| `FirebaseAnalytics` | Client-only, dynamically imported Analytics initialisation |
 
 ---
 
@@ -121,20 +124,52 @@ Only these exist now (dead primitives were removed in the audit):
 
 | Component | Import |
 |-----------|--------|
-| `Button` | `@/components/ui/button` — variants incl. `glass-dark`/`glass-light`; sizes `xs`-`icon` |
+| `Button` | `@/components/ui/button` — variants incl. `glass-dark`/`glass-light`; sizes `xs`-`icon`, `icon-sm` |
 | `Badge` | `@/components/ui/badge` |
-| `Card` | `@/components/ui/card` — composed: `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter` |
 | `Input` | `@/components/ui/input` |
-| `Textarea` | `@/components/ui/textarea` |
 | `Label` | `@/components/ui/label` |
-| `Select` | `@/components/ui/select` |
-| `Dialog` | `@/components/ui/dialog` |
+| `Select` | `@/components/ui/select` — Radix select; always add an `aria-label` or `<Label htmlFor>` |
+| `Dialog` | `@/components/ui/dialog` — centered modal; the primitive already caps height at `max-h-[90dvh]` and scrolls |
 | `Sheet` | `@/components/ui/sheet` — side-panel overlay |
-| `Checkbox` | `@/components/ui/checkbox` |
 | `Progress` | `@/components/ui/progress` |
-| `Tabs` | `@/components/ui/tabs` — `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` |
+| `Switch` | `@/components/ui/switch` |
+| `Tabs` | `@/components/ui/tabs` — `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`; `TabsList` uses `min-h-[2.5rem]` so `flex-wrap` works |
 | `Toaster` (Sonner) | `@/components/ui/sonner` — use `import { toast } from 'sonner'` |
 | `ThemeToggle` | `@/components/theme-toggle` — light/dark switch |
+
+There is **no `Card`, `Textarea` or `Checkbox` primitive** (earlier doc revisions listed them;
+they were removed as dead code). Compose card surfaces from `rounded-* border bg-card p-*` divs.
+Icons come from `lucide-react` only.
+
+---
+
+## Responsiveness — mobile-first conventions
+
+The app is used by hosts on phones and by guests almost exclusively on phones.
+These rules are load-bearing; they were each added to fix a real mobile defect:
+
+- **Breakpoints:** style the 360px case first, then widen with `sm:` (640), `md:` (768), `lg:` (1024).
+  Never start a grid at 2+ columns without a breakpoint (`grid-cols-2` alone is a bug).
+- **Headings:** page `h1`s go `text-3xl` then `sm:text-4xl`/`md:text-5xl`. `text-4xl` and up
+  only behind a breakpoint — a fixed `text-4xl` overflows narrow phones.
+- **Tables:** wrap in `overflow-x-auto` **and** give the `<table>` a `min-w-[…]`; `w-full` alone
+  squashes money columns into unreadable slivers instead of scrolling.
+- **Dialogs:** tall content must stay reachable. The `DialogContent` primitive supplies
+  `max-h-[90dvh] overflow-y-auto`; if you override `overflow` in a consumer
+  (`p-0 overflow-hidden`), you re-break it — use `overflow-y-auto`.
+- **Touch targets:** interactive controls are ≥ ~40px (`h-10`, `size="icon"`). Avoid `p-0.5`
+  icon buttons.
+- **Never hide actions behind hover alone** (`opacity-0 group-hover:opacity-100`): touch devices
+  have no hover, so the control is invisible *and* undiscoverable. Use the touch-safe pattern
+  `opacity-100 sm:opacity-0 sm:group-hover:opacity-100`.
+- **Drag surfaces:** pair pointer handlers with `touch-none` (`touch-action: none`) or a finger
+  drag scrolls the page instead of dragging; and clamp positions to the container, because
+  clipped (`overflow-hidden`) canvases make off-canvas items unrecoverable.
+- **Icon-only controls** need an `aria-label` naming the target (e.g. `` aria-label={`Delete ${item?.name}`} ``).
+- **Tailwind v3 pitfall:** `min-w-*`/`min-h-*` are **not** on the spacing scale here
+  (`minHeight` is not extended in `tailwind.config.ts`), so `min-h-10` silently emits
+  *no CSS*. Use an arbitrary value (`min-h-[2.5rem]`) or extend the config. `min-w-0`
+  and `min-h-screen` are core defaults and fine.
 
 App-level components worth knowing:
 `Navbar` (`components/navbar.tsx`), `Logo` (`components/logo.tsx`),

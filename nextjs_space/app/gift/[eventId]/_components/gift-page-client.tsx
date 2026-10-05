@@ -19,7 +19,12 @@ export function GiftPageClient({ eventId }: { eventId: string }) {
     const db = getFirestoreClient();
     if (!db) { setLoading(false); return; }
     getDoc(doc(db, 'publicGiftPages', eventId)).then((snapshot) => {
-      setEvent(snapshot.exists() ? snapshot.data().event ?? snapshot.data() : null);
+      // `isActive` is written by the event wizard and can be flipped off by the
+      // host. It used to be ignored, so a disabled gift page still accepted
+      // pledges. Missing and disabled render the same message, which also avoids
+      // leaking whether an event exists.
+      const data = snapshot.exists() ? snapshot.data() : null;
+      setEvent(data && data.isActive !== false ? (data.event ?? data) : null);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [eventId]);

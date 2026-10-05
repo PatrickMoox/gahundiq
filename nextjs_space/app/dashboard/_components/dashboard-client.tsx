@@ -8,7 +8,9 @@ import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useSubscription } from '@/lib/hooks/use-subscription';
+import { isSubscriptionActive } from '@/lib/plan-entitlements';
 import { Navbar } from '@/components/navbar';
+import { AuthGateShell } from '@/components/auth-gate-shell';
 import { SiteFooter } from '@/components/site-footer';
 import { SessionGovernancePanel } from '@/components/session-governance-panel';
 import { Button } from '@/components/ui/button';
@@ -74,7 +76,15 @@ export function DashboardClient() {
   const upcoming = useMemo(() => dated.filter((e: any) => e._date && (now == null || e._date.getTime() > now)).sort((a: any, b: any) => a._date - b._date), [dated, now]);
   const nextEvent = upcoming[0];
   const totalGuests = events.reduce((sum: number, e: any) => sum + (e.guestCount || 0), 0);
-  const activePlan = subscription?.tier || (events.find((e: any) => e.tier === 'premium') ? 'premium' : 'free');
+  // Plan badge reflects THIS user's entitlement, not any event they can see: a
+  // lapsed/canceled subscription must not read as Premium, and co-planning
+  // someone else's premium event (shared collaborator event) must not either —
+  // so the owned-event fallback is restricted to events the user actually hosts.
+  const activePlan = isSubscriptionActive(subscription)
+    || events.some((e: any) => e.hostId === user?.uid && e.tier === 'premium')
+    ? 'premium'
+    : 'free';
+
   const isPremium = activePlan === 'premium';
   const maxGuests = isPremium ? 250 : 25;
 
@@ -90,6 +100,11 @@ export function DashboardClient() {
     { label: 'Current Plan', value: isPremium ? 'Premium' : 'Free', icon: isPremium ? Star : Sparkles, tint: isPremium ? 'from-amber-500 to-orange-600' : 'from-emerald-500 to-teal-600', glow: 'bg-amber-500/10' },
     { label: 'Reports', value: 'View', icon: BarChart3, tint: 'from-sky-500 to-cyan-600', glow: 'bg-sky-500/10', href: '/reports' },
   ];
+
+  // Render gate only — AuthProvider owns signed-out routing (lib/auth-context)
+  // and sends this protected path home. Without the gate the private dashboard
+  // stays on screen for a paint (or forever, before this fix) after sign-out.
+  if (!user) return <AuthGateShell />;
 
   return (
     <div className="min-h-screen">

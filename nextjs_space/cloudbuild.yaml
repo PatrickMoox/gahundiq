@@ -21,6 +21,7 @@ steps:
           --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${_SENDER_ID} \
           --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=${_APP_ID} \
           --build-arg NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${_MEASUREMENT_ID} \
+          --build-arg NEXT_PUBLIC_SITE_URL=${_SITE_URL} \
           -t "${_REGION}-docker.pkg.dev/$PROJECT_ID/gahundiq/app:${_TAG}" \
           -f Dockerfile .
 
@@ -31,3 +32,16 @@ steps:
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/gahundiq/app:${_TAG}'
+
+# Public site URL baked into the bundle (metadata/OG/canonical URLs, robots.txt,
+# sitemap.xml). scripts/gcp-deploy.sh passes it from .env.local; an empty value
+# is allowed and makes the app fall back to http://localhost:3000.
+substitutions:
+  _SITE_URL: ''
+
+options:
+  # Send build logs to Cloud Logging only — no logs bucket required.
+  logging: CLOUD_LOGGING_ONLY
+
+# Next.js builds can exceed the 10-minute default on a cold npm cache.
+timeout: 1800s

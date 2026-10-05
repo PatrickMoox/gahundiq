@@ -36,7 +36,12 @@ export function InvitationBroadcastModal({
   const [sent, setSent] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/invite/${eventId}` : '';
+  // The only shareable *public* invitation artifact is the host's invitation
+  // (an uploaded file URL or an external link such as Canva). There is no
+  // generic `/invite/{eventId}` route — guest invites are per-token links
+  // (`/invite/{eventId}/{token}`) — so the old `${origin}/invite/${eventId}`
+  // value was a dead link that 404'd for every guest it was sent to.
+  const shareLink = invitationUrl?.trim() || '';
 
   const handleBroadcast = async () => {
     setSending(true);
@@ -58,7 +63,7 @@ export function InvitationBroadcastModal({
           // reference is the real shareable invitation path (never a fabricated
           // "sim_" id).
           method: 'link',
-          reference: `/invite/${eventId}`,
+          reference: shareLink || `/events/${eventId}`,
         }),
         updatedAt: serverTimestamp(),
       });
@@ -133,6 +138,7 @@ export function InvitationBroadcastModal({
                   <Button
                     variant="outline"
                     onClick={handleCopyLink}
+                    disabled={!shareLink}
                     className="w-full gap-2"
                   >
                     {copied ? (
@@ -143,16 +149,18 @@ export function InvitationBroadcastModal({
                   </Button>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {pendingGuests === 0
-                    ? 'All guests have responded — nothing to broadcast.'
-                    : 'This records the broadcast — your guests RSVP through the share link.'
+                  {!shareLink
+                    ? 'Upload an invitation (or add an invitation link) first — guest invites are personal, so there is nothing generic to share yet.'
+                    : pendingGuests === 0
+                      ? 'All guests have responded — nothing to broadcast.'
+                      : 'This records the broadcast — your guests RSVP through the personal invite links you send.'
                   }
                 </p>
               </div>
 
               <div className="rounded-lg bg-muted/50 p-3 text-sm">
                 <div className="flex justify-between"><span>Invitation URL</span></div>
-                <p className="mt-1 text-xs text-muted-foreground truncate">{invitationUrl}</p>
+                <p className="mt-1 text-xs text-muted-foreground truncate">{shareLink || 'No invitation uploaded yet'}</p>
               </div>
             </>
           ) : (
