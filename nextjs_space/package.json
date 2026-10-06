@@ -16,7 +16,7 @@
     "@types/uuid": "^11.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "autoprefixer": "10.4.15",
-    "eslint": "9.24.0",
+    "eslint": "9.39.5",
     "firebase-admin": "^14.3.0",
     "postcss": "^8.5.28",
     "tailwind-merge": "2.5.2",
@@ -57,6 +57,7 @@
     "not dead"
   ],
   "overrides": {
-    "postcss": "^8.5.28"
+    "postcss": "^8.5.28",
+    "@grpc/grpc-js": "^1.14.5"
   }
 }

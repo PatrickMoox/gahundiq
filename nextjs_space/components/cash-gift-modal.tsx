@@ -27,7 +27,7 @@ interface Props {
   eventTitle?: string;
   /** ISO 4217 code of the gift page's event — preset amounts and totals render in this currency. */
   currency?: string;
-  onGiftSent?: (data: any) => void;
+  onGiftSent?: (data: any) => Promise<void> | void;
 }
 
 export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, currency, onGiftSent }: Props) {
@@ -39,6 +39,7 @@ export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, currenc
   const [guestEmail, setGuestEmail] = useState('');
   const [message, setMessage] = useState('');
   const [showConfetti, setShowConfetti] = useState(false);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     if (open) { setStep(1); setShowConfetti(false); }
@@ -47,22 +48,27 @@ export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, currenc
   const effectiveAmount = customAmount ? Number(customAmount) : amount;
   const fee = (effectiveAmount * 0.029 + 0.30);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     // The rules require amount > 0 for guest-created gifts; catch it here with
     // a clear message instead of a confusing permission-denied afterwards.
     if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
       toast.error('Please enter a gift amount greater than zero.');
       return;
     }
-    // A real gift is only confirmed once the host processes the payment. Until
-    // payments are wired, this records a PENDING pledge (matches Firestore
-    // rules, which only allow guests to create gifts with status 'pending').
-    setStep(4);
-    setShowConfetti(true);
-    onGiftSent?.({
-      eventId, guestName, guestEmail, amount: effectiveAmount,
-      giftType, message, status: 'pending',
-    });
+    setSending(true);
+    try {
+      // This records a pending pledge, not a completed payment.
+      await onGiftSent?.({
+        eventId, guestName, guestEmail, amount: effectiveAmount,
+        giftType, message, status: 'pending',
+      });
+      setStep(4);
+      setShowConfetti(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not record your pledge. Please try again.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -164,7 +170,9 @@ export function CashGiftModal({ open, onOpenChange, eventId, eventTitle, currenc
                 </div>
                 <div className="flex justify-between">
                   <Button variant="outline" onClick={() => setStep(2)} className="gap-2"><ArrowLeft className="h-4 w-4" /> Back</Button>
-                  <Button onClick={handleSend} className="gap-2">Record Pledge 💝</Button>
+                  <Button onClick={handleSend} disabled={sending} className="gap-2">
+                    {sending ? 'Recording…' : 'Record Pledge 💝'}
+                  </Button>
                 </div>
               </motion.div>
             )}

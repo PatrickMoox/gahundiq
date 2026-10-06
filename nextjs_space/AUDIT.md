@@ -291,17 +291,71 @@ genuine defects were found and fixed; three more are documented but left open
 | `next build` (production, Turbopack) | ✅ **Compiled successfully**, 21 routes incl. `/api/health` (ƒ), `/robots.txt` & `/sitemap.xml` (○); zero errors |
 | Post-fix `tsc` + `eslint` re-run | ✅ EXIT 0 (build’s regenerated `tsconfig.json`/`next-env.d.ts` reverted) |
 
-### Still open (Pass 3 additions)
+### Resolved in Pass 4
 
-7. **`gifts-tab` “Total Received” includes `pending` pledges.** With payments
-   unwired every gift is `pending`, so the headline figure overstates money
-   actually received. Reports already separates received vs pledged; aligning the
-   tab is a product decision.
-8. **Gift-page error copy** (`gift-page-client`) reports gifts as “available on
-   paid ceremonies” when a write fails — misleading (free events can receive
-   pledges too). It should surface the real error.
-9. **Collaborator re-opening an accepted invite** lands on the “Finish joining”
-   (partial) panel even when they are already a member; the self-join write is
-   then rejected by the rules. Reading membership before showing that panel
-   would close the loop.
+Pass 4 below fixes the three open findings from this pass: pledge and received
+totals are separated, gift-write failures no longer claim paid-plan availability,
+and accepted collaborator links route existing members to their event.
 
+---
+
+# Pass 4 — security and correctness re-audit (2026-10-06)
+
+Rechecked the Firestore/Storage trust boundaries, collaboration and gift flows,
+dependency advisories, and the previously open Pass 3 findings. TypeScript and
+lint passed before this pass; fixes are being validated again after the edits.
+
+### Fixed
+
+1. **Collaborator money sections were public by default in Firestore rules.**
+   The rule fallback accidentally defaulted `budget` and `vendors` to `true`,
+   opposite the client-side safe default. The rules now default those two
+   sections to private; an explicit per-collaborator `true` is still required
+   to share them.
+2. **Disabled gift pages could still accept direct Firestore writes.** The
+   `/gift/{eventId}` UI hid a disabled page, but the public gift-create rule
+   did not check the page state. Guest pledge creation now requires an existing
+   gift page that is active (older page docs without `isActive` remain active
+   for compatibility).
+3. **Pending pledges were counted as money received.** The gifts dashboard now
+   counts completed amounts and fees as received, and reports pending amounts
+   separately as pledged.
+4. **The gift flow showed success before Firestore accepted the pledge.** It
+   now awaits the write, shows success only after it completes, uses a server
+   timestamp, and displays an actionable error instead of incorrectly blaming
+   paid-plan availability.
+5. **Reopening an accepted collaborator link gave existing members a failing
+   “Finish joining” action.** Existing members are sent to their event; a
+   removed collaborator with no valid claim receives a clear access-removed
+   state.
+6. **Dependency advisories:** refreshed compatible lockfile resolutions and
+   raised ESLint within major version 9; pinned the transitive gRPC dependency
+   to the patched 1.14.5+ line to address the production Firebase dependency
+   advisory. The Next.js critical advisory was resolved by the compatible
+   lockfile update.
+
+### Remaining items
+
+- `npm audit --omit=dev` reports **0 vulnerabilities**. Full `npm audit` still
+  reports **8 development-tool findings** (5 high, 3 moderate) in Tailwind
+  3's transitive `braces` / `postcss-selector-parser` dependency chain; npm
+  reports no compatible fix. Replacing Tailwind 3 or forcing incompatible
+  parser versions needs a separate toolchain migration. ESLint 9's patched
+  release also emits a deprecation warning; ESLint 10 requires Node 20.19+,
+  so defer that upgrade until the supported local Node floor is confirmed.
+- The current app records pledges only; payments are not connected. Public gift
+  writes remain subject to abuse/rate-limit exposure and should move behind a
+  backend or App Check before real payment processing.
+- Free-plan guest/invite/event metering and client-enforced session policy
+  remain architectural follow-ups described above.
+
+### Validation
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run build` — passed with Next.js 16.4.0.
+- `npm audit --omit=dev` — 0 vulnerabilities.
+- `npm audit` — 8 remaining dev-tool findings described above.
+- Firestore emulator validation was unavailable: Firebase CLI and Java are not
+  installed in the workspace, so the changed rules were reviewed statically
+  but not compiled against the emulator.

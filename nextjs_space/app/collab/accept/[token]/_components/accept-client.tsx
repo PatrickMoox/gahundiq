@@ -15,7 +15,7 @@ import type { CollabInvite } from '@/types/firestore';
 import { collabClaimId } from '@/lib/collab';
 import { HeartHandshake, Loader2 } from 'lucide-react';
 
-type Phase = 'loading' | 'signin' | 'invalid' | 'revoked' | 'expired' | 'ready' | 'partial';
+type Phase = 'loading' | 'signin' | 'invalid' | 'revoked' | 'removed' | 'expired' | 'ready' | 'partial';
 
 /**
  * Accept screen for a collaboration invite link (`/collab/accept/{token}`).
@@ -45,7 +45,27 @@ export function AcceptClient({ token }: { token: string }) {
         setInvite(data);
         const expires = data.expiresAt?.toMillis?.() ?? (data.expiresAt ? new Date(data.expiresAt).getTime() : 0);
         if (data.status === 'revoked') setPhase('revoked');
-        else if (data.status === 'accepted') setPhase(data.acceptedBy === user.uid ? 'partial' : 'invalid');
+        else if (data.status === 'accepted' && data.acceptedBy === user.uid) {
+          const claim = await getDoc(doc(db, 'collabClaims', collabClaimId(data.eventId, user.uid)));
+          if (cancelled) return;
+          if (!claim.exists()) { setPhase('removed'); return; }
+          try {
+            const event = await getDoc(doc(db, 'events', data.eventId));
+            if (cancelled) return;
+            if (event.exists() && event.data().collaboratorIds?.includes(user.uid)) {
+              router.replace(`/events/${data.eventId}`);
+              return;
+            }
+            setPhase('partial');
+          } catch (error) {
+            if (cancelled) return;
+            const code = error && typeof error === 'object' && 'code' in error
+              ? (error as { code?: string }).code
+              : undefined;
+            setPhase(code === 'permission-denied' ? 'removed' : 'partial');
+          }
+        }
+        else if (data.status === 'accepted') setPhase('invalid');
         else if (expires > 0 && expires < Date.now()) setPhase('expired');
         else setPhase('ready');
       } catch {
@@ -53,7 +73,7 @@ export function AcceptClient({ token }: { token: string }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [token, user, authLoading]);
+  }, [token, user, authLoading, router]);
 
   /** Self-join write — allowed by rules only while our claim doc exists. */
   const joinEvent = async (): Promise<void> => {
@@ -97,9 +117,10 @@ export function AcceptClient({ token }: { token: string }) {
     }
   };
 
-  const shells: Record<'invalid' | 'revoked' | 'expired', { title: string; body: string }> = {
+  const shells: Record<'invalid' | 'revoked' | 'removed' | 'expired', { title: string; body: string }> = {
     invalid: { title: 'Invite not found', body: 'This link is not valid. Ask the host to create a new invite.' },
     revoked: { title: 'Invite revoked', body: 'The host has withdrawn this invitation.' },
+    removed: { title: 'Access removed', body: 'Your collaborator access has been removed. Ask the host to send you a new invite.' },
     expired: { title: 'Invite expired', body: 'Invite links stay valid for 7 days. Ask the host to create a new one.' },
   };
 

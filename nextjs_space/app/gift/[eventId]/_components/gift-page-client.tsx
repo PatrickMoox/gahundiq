@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
 import { formatEventDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -77,23 +77,25 @@ export function GiftPageClient({ eventId }: { eventId: string }) {
         eventId={eventId}
         eventTitle={event?.title}
         currency={event?.currency}
-        onGiftSent={(data: any) => {
+        onGiftSent={async (data: any) => {
           const db = getFirestoreClient();
-          if (!db) return;
-          addDoc(collection(db, 'events', eventId, 'gifts'), {
-            guestName: data?.guestName ?? 'Anonymous',
-            guestEmail: data?.guestEmail ?? null,
-            amount: data?.amount ?? 0,
-            currency: event?.currency ?? 'USD',
-            message: data?.message ?? '',
-            giftType: data?.giftType ?? 'cash',
-            status: 'pending',
-            createdAt: new Date(),
-          }).then(() => {
+          if (!db) throw new Error('Could not connect to record your pledge. Please try again.');
+          try {
+            await addDoc(collection(db, 'events', eventId, 'gifts'), {
+              guestName: data?.guestName ?? 'Anonymous',
+              guestEmail: data?.guestEmail ?? null,
+              amount: data?.amount ?? 0,
+              currency: event?.currency ?? 'USD',
+              message: data?.message ?? '',
+              giftType: data?.giftType ?? 'cash',
+              status: 'pending',
+              createdAt: serverTimestamp(),
+            });
             toast.success('Gift recorded — thank you!');
-          }).catch(() => {
-            toast.error('Gift notifications are available on paid ceremonies. Please contact the couple directly.');
-          });
+          } catch (error) {
+            console.error('Gift pledge write failed:', error);
+            throw new Error('We could not record your pledge. Please try again or contact the couple.');
+          }
         }}
       />
     </div>

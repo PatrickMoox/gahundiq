@@ -24,8 +24,20 @@ export function GiftsTab({ eventId, event }: { eventId: string; event: EventData
   const currency = event?.currency;
   const [showQR, setShowQR] = useState(false);
 
-  const total = useMemo(() => (gifts ?? []).reduce((s: number, g: CashGift) => s + (g?.amount ?? 0), 0), [gifts]);
-  const fees = useMemo(() => (gifts ?? []).reduce((s: number, g: CashGift) => s + (g?.platformFee ?? 0), 0), [gifts]);
+  const completedGifts = useMemo(() => (gifts ?? []).filter((gift) => gift.status === 'completed'), [gifts]);
+  const totalReceived = useMemo(
+    () => completedGifts.reduce((sum, gift) => sum + (gift.amount ?? 0), 0),
+    [completedGifts],
+  );
+  const totalPledged = useMemo(
+    () => (gifts ?? []).filter((gift) => gift.status === 'pending')
+      .reduce((sum, gift) => sum + (gift.amount ?? 0), 0),
+    [gifts],
+  );
+  const fees = useMemo(
+    () => completedGifts.reduce((sum, gift) => sum + (gift.platformFee ?? 0), 0),
+    [completedGifts],
+  );
   const giftUrl = typeof window !== 'undefined' ? `${window.location.origin}/gift/${eventId}` : '';
 
   const copyLink = async () => {
@@ -51,9 +63,10 @@ export function GiftsTab({ eventId, event }: { eventId: string; event: EventData
   return (
     <div>
       {/* Summary */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Total Received', value: formatMoney(total, currency), icon: DollarSign },
+          { label: 'Total Received', value: formatMoney(totalReceived, currency), icon: DollarSign },
+          { label: 'Total Pledged', value: formatMoney(totalPledged, currency), icon: Gift },
           { label: 'Gifts', value: String(gifts?.length ?? 0), icon: Gift },
           { label: 'Platform Fees', value: formatMoney(fees, currency), icon: Heart },
         ].map((s: any, i: number) => (

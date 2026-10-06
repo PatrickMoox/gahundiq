@@ -48,7 +48,12 @@ service cloud.firestore {
       return isEventCollaborator(eventId)
         && eventDoc(eventId).data.get('collaboratorAccess', {})
           .get(request.auth.uid, {})
-          .get(section, section == 'budget' || section == 'vendors');
+          .get(section, section != 'budget' && section != 'vendors');
+    }
+
+    function publicGiftPageIsActive(eventId) {
+      return exists(/databases/$(database)/documents/publicGiftPages/$(eventId))
+        && get(/databases/$(database)/documents/publicGiftPages/$(eventId)).data.get('isActive', true) == true;
     }
 
     // Public gift pledges (written by anonymous guests from /gift/{eventId}):
@@ -307,7 +312,9 @@ service cloud.firestore {
       // Cash gifts contain payment-related data and are never readable by collaborators.
       match /gifts/{giftId} {
         allow read: if (isEventHost(eventId) && isPaidEvent(eventId)) || isAdmin();
-        allow create: if isAdmin() || (isPaidEvent(eventId) && hasOnlyPublicGiftFields());
+        allow create: if isAdmin() || (isPaidEvent(eventId)
+          && publicGiftPageIsActive(eventId)
+          && hasOnlyPublicGiftFields());
         allow update, delete: if isAdmin();
       }
     }
