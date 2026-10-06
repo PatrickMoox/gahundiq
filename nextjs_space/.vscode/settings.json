@@ -7,6 +7,8 @@
         "/^git push origin HEAD:refs/heads/copilot/responsive-fixes-5d63ba0$/": {
             "approve": true,
             "matchCommandLine": true
-        }
+        },
+        "git commit": true,
+        "git push": true
     }
 }
