@@ -359,3 +359,45 @@ lint passed before this pass; fixes are being validated again after the edits.
 - Firestore emulator validation was unavailable: Firebase CLI and Java are not
   installed in the workspace, so the changed rules were reviewed statically
   but not compiled against the emulator.
+
+---
+
+# Pass 5 — account UX, Google sign-in, and admin scope (2026-10-07)
+
+### Changes
+
+- Removed the session-governance card and its presentation-only hook from the
+  dashboard. Current-device tracking, idle/absolute expiry, and the concurrent
+  session limit in `AuthProvider` remain; dashboard session-management controls
+  are no longer exposed.
+- Google sign-in now retries with Firebase redirect auth in popup-blocked or
+  popup-unsupported environments. A profile mirror write failing after Google
+  authentication no longer turns a successful sign-in into a failure. Auth
+  errors now explain provider-disabled and unauthorized-host Firebase Console
+  configuration, as well as browser storage and popup issues.
+- Firestore already grants admins platform-wide access through the `isAdmin()`
+  catch-all. Storage now mirrors that admin definition and grants admins full
+  object access while preserving explicit path access for non-admin users.
+  Firebase Authentication user administration remains limited to trusted
+  Admin SDK operations, not client-side superuser UI.
+
+### Google sign-in configuration to verify in Firebase Console
+
+- Authentication → Sign-in method → **Google** must be enabled.
+- Authentication → Settings → **Authorized domains** must contain the exact
+  hostname where the app is running (including the production/custom domain).
+- The local Firebase `authDomain` is configured as `invitematic.firebaseapp.com`;
+  this confirms client config is present, but does not establish that Google
+  provider enablement or production-host authorization is configured correctly.
+
+### Validation
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run build -- --webpack` — passed; the build logged retried `socket hang up`
+  warnings while compiling, then completed successfully and generated all routes.
+- Firebase rules were reviewed statically, but not emulator-compiled: Firebase
+  CLI and Java are unavailable in this workspace.
+- Live OAuth cannot be completed from this workspace because it has no shared
+  browser session; Firebase Console provider/domain configuration also cannot
+  be changed from source code.

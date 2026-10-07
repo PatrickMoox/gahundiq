@@ -12,7 +12,6 @@ import { isSubscriptionActive } from '@/lib/plan-entitlements';
 import { Navbar } from '@/components/navbar';
 import { AuthGateShell } from '@/components/auth-gate-shell';
 import { SiteFooter } from '@/components/site-footer';
-import { SessionGovernancePanel } from '@/components/session-governance-panel';
 import { Button } from '@/components/ui/button';
 import {
   Plus, Calendar, Users, Gift, Sparkles, TrendingUp, ArrowRight,
@@ -324,8 +323,6 @@ export function DashboardClient() {
           </div>
         </div>
 
-        {/* ── Session governance ───────────────────────────────────── */}
-        <SessionGovernancePanel />
       </div>
 
       <SiteFooter />

@@ -1,6 +1,15 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // Storage mirrors Firestore's admin definition so platform admins can
+    // investigate and repair user uploads. The admin registry supports
+    // console-bootstrapped and UI-granted admins as well as custom claims.
+    function isAdmin() {
+      return request.auth != null
+        && (request.auth.token.admin == true
+          || firestore.get(/databases/(default)/documents/admin/$(request.auth.uid)).data != null);
+    }
+
     // Invitation files: public read (shared via links), event-host-only write.
     // The client-declared `hostId` metadata is NOT trusted on create — any
     // signed-in user could claim it and squat files under another event's
@@ -32,12 +41,10 @@ service firebase.storage {
         && resource.metadata.hostId == request.auth.uid;
     }
 
-    // Default: deny everything not explicitly matched above. The app only
-    // reads/writes `invitations/` (plus the reserved `covers/` path), so the
-    // previous authenticated-everything fallback would have let ANY signed-in
-    // user read or overwrite arbitrary objects outside those prefixes.
+    // Admins are superusers across app storage; everyone else is denied unless
+    // an explicit path rule above grants access.
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read, write: if isAdmin();
     }
   }
 }

@@ -176,10 +176,7 @@ App-level components worth knowing:
 `PlanFeatureGate` (`components/plan-feature-gate.tsx`), `ClientOnly` / `useMounted`
 (`components/client-only.tsx`), `SafeDate`/`SafeTime`/`SafeNumber`
 (`components/safe-format.tsx`), `CashGiftModal`, `CeremonyAddonModal`,
-`InvitationUploadModal`, `InvitationBroadcastModal` (`components/`),
-`SessionGovernancePanel` (`components/session-governance-panel.tsx`) —
-per-device session management backed by `lib/session-policy.ts` + the session
-lifecycle in `lib/auth-context.tsx`.
+`InvitationUploadModal`, `InvitationBroadcastModal` (`components/`).
 `ReviewBadge` (`components/review-badge.tsx`) — SSR-safe, real-data social-proof
 stars; renders nothing until a review exists in the public `reviews` collection
 (admin-managed via the admin Reviews tab, per firestore.rules).

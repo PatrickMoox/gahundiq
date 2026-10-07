@@ -34,7 +34,11 @@ through **capability links** and never need an account.
    (`scripts/set-admin-claim.ts`). Nothing in the running app holds admin
    credentials.
 4. **Admin access is a custom claim** (`request.auth.token.admin == true`),
-   granted by `npx tsx scripts/set-admin-claim.ts`. It is not a Firestore doc.
+   granted by `npx tsx scripts/set-admin-claim.ts`; the Firestore admin
+   registry is also supported for bootstrapping and console role management.
+   Admins have full Firestore and Storage access. Firebase Authentication user
+   account administration still requires trusted Admin SDK operations and is
+   not exposed to the client.
 5. **Public pages use capability tokens** — unguessable ids in the URL
    (invite RSVP, vendor pass, collaborator accept, gift pledge). Rules validate
    the token, its event, and (where relevant) its expiry.
@@ -91,7 +95,7 @@ app/                      routes (pages are server shells; *_client.tsx holds th
 components/                app-level components (navbar, modals, gates)
 components/ui/             shadcn/ui primitives — extend these, don't fork them
 lib/                       firebase init, auth context, hooks/, entitlements, helpers
-lib/hooks/                 use-firestore-data, use-subscription, use-sessions
+lib/hooks/                 use-firestore-data, use-subscription
 types/firestore.ts         shared document types
 firestore.rules            ← the real security boundary
 storage.rules              ← ditto, for uploads
@@ -108,6 +112,11 @@ npm install
 cp .env.example .env.local     # then fill in the Firebase web config
 npm run dev                    # http://localhost:3000
 ```
+
+To enable Google sign-in, enable **Google** under Firebase Console →
+Authentication → Sign-in method, and add the app's deployed hostname under
+Authentication → Settings → Authorized domains. Popup-blocked browsers
+automatically retry using a full-page redirect.
 
 Checks that must pass before a PR or deploy:
 
@@ -207,4 +216,3 @@ invisible to everyone else.**
 ---
 
 © Gahundiq — private project. Review licensing before public distribution.
-

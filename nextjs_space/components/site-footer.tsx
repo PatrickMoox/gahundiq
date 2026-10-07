@@ -77,6 +77,17 @@ export function SiteFooter() {
             <Link href="/terms" className="transition-colors hover:text-primary">Terms</Link>
             <Link href="/help" className="transition-colors hover:text-primary">Help</Link>
           </div>
+          <p>
+            Powered by{' '}
+            <a
+              href="https://UpaimeHive.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-primary"
+            >
+              UpaimeHive.com
+            </a>
+          </p>
         </div>
       </div>
     </footer>

@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { GoogleAuthProvider, createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut as firebaseSignOut, updateProfile, type User } from 'firebase/auth';
+import { GoogleAuthProvider, createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut as firebaseSignOut, updateProfile, type User } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, onSnapshot, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { getAuthClient, getFirestoreClient } from '@/lib/firebase';
@@ -35,10 +35,6 @@ interface AuthContextType {
   resendVerificationEmail: () => Promise<void>;
   /** Re-checks verification immediately; resolves true once verified and activated. */
   checkVerification: () => Promise<boolean>;
-  /** Ends the session for an individual device (any of the user's own records). */
-  revokeSession: (deviceId: string) => Promise<void>;
-  /** Ends every session except this device — "sign out everywhere else". */
-  signOutAllDevices: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -52,8 +48,6 @@ const AuthContext = createContext<AuthContextType>({
   resetPassword: async () => {},
   resendVerificationEmail: async () => {},
   checkVerification: async () => false,
-  revokeSession: async () => {},
-  signOutAllDevices: async () => {},
 });
 
 /**
@@ -81,8 +75,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const activateRef = useRef<((firebaseUser: User) => Promise<void>) | null>(null);
 
   // ── Session governance state (see lib/session-policy.ts) ──────────
-  const uidRef = useRef<string | null>(null);
-  const deviceIdRef = useRef<string | null>(null);
   const sessionRefRef = useRef<any>(null);         // sessions/{uid}/devices/{deviceId} ref
   const sessionReadyRef = useRef(false);           // our live session doc exists
   const localSignOutRef = useRef(false);           // sign-out initiated on THIS device
@@ -114,7 +106,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const emit = (firebaseUser: User) => {
-      uidRef.current = firebaseUser.uid;
       setUser({
         uid: firebaseUser.uid,
         email: firebaseUser.email,
@@ -194,7 +185,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const db = getFirestoreClient();
       if (!db) return;
       const deviceId = getOrCreateDeviceId();
-      deviceIdRef.current = deviceId;
       const ref = doc(db, 'sessions', uid, 'devices', deviceId);
       sessionRefRef.current = ref;
       watchSession(ref);
@@ -303,7 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // hosted reset revokes every refresh token), an admin revocation, or an
         // expired/revoked token. In the involuntary case the record is still
         // marked "active" in the registry, so end it here to keep the session
-        // governance view truthful.
+        // registry truthful.
         if (!localSignOutRef.current) {
           const db = getFirestoreClient();
           const ref = sessionRefRef.current;
@@ -315,7 +305,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setVerificationEmail(null);
         setLoading(false);
-        uidRef.current = null;
         sessionReadyRef.current = false;
         sessionRefRef.current = null;
         expiresAtRef.current = 0;
@@ -406,13 +395,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = useCallback(async () => {
     const auth = getAuthClient();
     if (!auth) throw new Error('Firebase Authentication is not configured.');
-    const result = await signInWithPopup(auth, new GoogleAuthProvider());
-    await syncProfile(result.user);
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      try {
+        await syncProfile(result.user);
+      } catch (error) {
+        // Authentication has already succeeded. A profile mirror is not
+        // required to establish the signed-in session.
+        console.error('Google sign-in succeeded, but profile sync failed:', error);
+        toast.warning('Signed in with Google, but profile details could not be saved.');
+      }
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error
+        ? (error as { code?: string }).code
+        : undefined;
+      if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+      throw error;
+    }
   }, [syncProfile]);
 
   const signOutFn = useCallback(async () => {
-    // End THIS device's session record first (fire-and-forget) so the session
-    // governance panel reflects the sign-out, then sign out of Firebase.
+    // End THIS device's session record first (fire-and-forget), then sign out
+    // of Firebase.
     localSignOutRef.current = true;
     endingRef.current = false;
     const db = getFirestoreClient();
@@ -422,31 +430,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const auth = getAuthClient();
     if (auth) await firebaseSignOut(auth);
-  }, []);
-
-  // Session governance: end a specific device session (any of the user's own).
-  const revokeSession = useCallback(async (deviceId: string) => {
-    const db = getFirestoreClient();
-    const uid = uidRef.current;
-    if (!db || !uid) return;
-    await updateDoc(doc(db, 'sessions', uid, 'devices', deviceId), {
-      revokedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-  }, []);
-
-  // "Sign out everywhere else": revoke every session except this device.
-  const signOutAllDevices = useCallback(async () => {
-    const db = getFirestoreClient();
-    const uid = uidRef.current;
-    if (!db || !uid) return;
-    const snap = await getDocs(collection(db, 'sessions', uid, 'devices'));
-    const keep = deviceIdRef.current;
-    const batch = writeBatch(db);
-    snap.docs.forEach((d: any) => {
-      if (d.id !== keep) batch.update(d.ref, { revokedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    });
-    await batch.commit();
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
@@ -478,7 +461,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user, loading, verificationEmail,
       signIn, signUp, signInWithGoogle, signOut: signOutFn,
       resetPassword, resendVerificationEmail, checkVerification,
-      revokeSession, signOutAllDevices,
     }}>
       {children}
     </AuthContext.Provider>

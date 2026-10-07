@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 
 const friendlyAuthError = (err: any): string => {
   const code = String(err?.code ?? '').replace('auth/', '');
+  const hostname = typeof window === 'undefined' ? 'this domain' : window.location.hostname;
   const messages: Record<string, string> = {
     'invalid-email': 'That email address looks invalid.',
     'user-not-found': 'No account found with that email.',
@@ -28,7 +29,11 @@ const friendlyAuthError = (err: any): string => {
     'account-exists-with-different-credential': 'That email already has a password account. Sign in with your password instead, or use that account to log in.',
     'popup-closed-by-user': 'Google sign-in was cancelled — the popup was closed before finishing.',
     'cancelled-popup-request': 'Google sign-in was cancelled. Please allow popups for this site and try again.',
-    'operation-not-allowed': 'Google sign-in is not enabled for this environment yet.',
+    'operation-not-allowed': 'Google sign-in is disabled in Firebase. Enable Google under Authentication → Sign-in method in the Firebase Console.',
+    'unauthorized-domain': `This domain (${hostname}) is not authorized for Firebase Authentication. Add it under Authentication → Settings → Authorized domains in the Firebase Console.`,
+    'popup-blocked': 'Your browser blocked the Google sign-in popup. Retrying with a full-page redirect…',
+    'operation-not-supported-in-this-environment': 'This browser cannot open the Google sign-in popup. Retrying with a full-page redirect…',
+    'web-storage-unsupported': 'Google sign-in requires browser storage. Enable cookies/site data for this site and try again.',
   };
   return messages[code] ?? err?.message ?? 'Something went wrong. Please try again.';
 };
