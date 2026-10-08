@@ -9,6 +9,7 @@
             "matchCommandLine": true
         },
         "git commit": true,
-        "git push": true
+        "git push": true,
+        "printf": true
     }
 }
