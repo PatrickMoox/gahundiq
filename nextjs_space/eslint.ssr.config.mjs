@@ -2,7 +2,7 @@
 //   yarn eslint -c eslint.ssr.config.mjs .
 // Catches the error class behind most Next.js hydration failures. Do NOT delete or
 // weaken this file to silence errors — fix the flagged code (see components/client-only.tsx
-// and components/safe-format.tsx for ready-made safe patterns).
+// for ready-made safe patterns).
 import tsParser from '@typescript-eslint/parser'
 
 const BROWSER_GLOBALS = new Set(['window', 'document', 'localStorage', 'sessionStorage', 'navigator'])
@@ -78,7 +78,7 @@ const ssrPlugin = {
               return
             }
             if (anc.type === 'JSXExpressionContainer' && !crossedFunction) {
-              context.report({ node, message: `\`${name}\` rendered directly in JSX differs between server and client (hydration mismatch). Compute it in useEffect/state, or use <SafeDate>/<ClientOnly> from components/.` })
+              context.report({ node, message: `\`${name}\` rendered directly in JSX differs between server and client (hydration mismatch). Compute it in useEffect/state, or defer browser-only rendering with <ClientOnly> from components/client-only.tsx.` })
               return
             }
           }
@@ -98,7 +98,7 @@ const ssrPlugin = {
             if (node.callee.type === 'MemberExpression' && !node.callee.computed && node.callee.property.type === 'Identifier' && LOCALE_METHODS.has(node.callee.property.name) && node.arguments.length === 0) {
               context.report({
                 node,
-                message: `\`${node.callee.property.name}()\` without arguments uses the runtime's locale/timezone, which differs between server and client (hydration mismatch). Pass an explicit locale (and timeZone for dates), e.g. ('en-US', { timeZone: 'UTC' }), or use <SafeDate>/<SafeTime>/<SafeNumber> from components/safe-format.tsx.`,
+                message: `\`${node.callee.property.name}()\` without arguments uses the runtime's locale/timezone, which differs between server and client (hydration mismatch). Pass an explicit locale (and timeZone for dates), e.g. ('en-US', { timeZone: 'UTC' }), or defer visitor-specific formatting until after mount.`,
               })
             }
           },

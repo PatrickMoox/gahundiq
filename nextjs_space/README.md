@@ -151,7 +151,8 @@ features just stay empty. Handy for pure UI work without credentials.
 - `'use client'` only where hooks or browser APIs are needed; `page.tsx` files
   stay thin and render a `*-client.tsx`.
 - Don't call `new Date()` during render in a `.tsx` file — the custom lint config
-  exists to catch SSR/hydration mismatches. Format through `safe-format.tsx`.
+  exists to catch SSR/hydration mismatches. Use explicit locales and time zones
+  when formatting values that render on both the server and client.
 - Feedback via `toast` from `sonner`; icon-only controls need an `aria-label`;
   touch targets ≥ 40px.
 - Tailwind **v3** caveat: `min-h-10` / `min-w-4` are **not** generated (the

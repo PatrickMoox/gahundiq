@@ -106,9 +106,8 @@ function fractionDigits(code: CurrencyCode): number {
 
 /**
  * Hydration-safe money formatting. ALWAYS formats with the explicit 'en-US'
- * number locale (matching the SafeNumber convention in components/safe-format.tsx)
- * so SSR and client render identically. The currency code/symbol is chosen by
- * the event — not the viewer — so every collaborator sees the same figures.
+ * number locale so SSR and client render identically. The currency code/symbol
+ * is chosen by the event — not the viewer — so every collaborator sees the same figures.
  */
 export function formatMoney(amount: number | null | undefined, currency?: string | null): string {
   const code: CurrencyCode = currency && isSupported(currency) ? currency : DEFAULT_CURRENCY;
@@ -123,10 +122,4 @@ export function formatMoney(amount: number | null | undefined, currency?: string
   } catch {
     return `${code} ${value.toLocaleString('en-US')}`;
   }
-}
-
-/** Plain symbol for input prefixes, e.g. "$" or "FRw". */
-export function currencySymbol(currency?: string | null): string {
-  const code: CurrencyCode = currency && isSupported(currency) ? currency : DEFAULT_CURRENCY;
-  return CURRENCIES.find((c) => c.code === code)?.symbol ?? code;
 }

@@ -204,27 +204,6 @@ export interface CashGift {
   createdAt: any;
 }
 
-/**
- * Device session governed by the session policy (see lib/session-policy.ts).
- * One record per device at `sessions/{uid}/devices/{deviceId}`. The doc id IS the
- * stable device id; a record exists while that device holds a session. Writers
- * are restricted to the owner; the client only ever writes the heartbeat /
- * revocation fields (see firestore.rules).
- */
-export interface SessionRecord {
-  uid: string;
-  deviceId: string;
-  deviceLabel: string;
-  createdAt: any;
-  lastActiveAt: any;
-  expiresAt: any;
-  /** Set when the user signs out / the session is ended on this device. */
-  signedOutAt?: any;
-  /** Set when the session is revoked from elsewhere (other device / admin / eviction). */
-  revokedAt?: any;
-  updatedAt?: any;
-}
-
 export interface PublicReview {
   rating: number; // 0.5–5
   author?: string;
@@ -260,20 +239,6 @@ export interface CollabInvite {
   expiresAt?: any;
   acceptedBy?: string;
   acceptedAt?: any;
-}
-
-/**
- * Written by the invitee when accepting an invite. Its existence (verified
- * against the accepted invite via getAfter in the rules) is what authorizes
- * the invitee's self-join write on `events/{eventId}.collaboratorIds`.
- */
-export interface CollabClaim {
-  eventId: string;
-  uid: string;
-  /** Self-reported display name shown to the host in the collaborators panel. */
-  displayName: string;
-  token: string;
-  createdAt?: any;
 }
 
 export interface Subscription {

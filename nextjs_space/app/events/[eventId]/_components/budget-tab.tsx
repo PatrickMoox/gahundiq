@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { BudgetItem, EventData } from '@/types/firestore';
-import { formatMoney, currencySymbol } from '@/lib/currency';
+import { formatMoney } from '@/lib/currency';
 import { csvEscape } from '@/lib/utils';
 import { Plus, DollarSign, TrendingUp, TrendingDown, PieChart, Download, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';

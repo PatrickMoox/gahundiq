@@ -174,8 +174,7 @@ These rules are load-bearing; they were each added to fix a real mobile defect:
 App-level components worth knowing:
 `Navbar` (`components/navbar.tsx`), `Logo` (`components/logo.tsx`),
 `PlanFeatureGate` (`components/plan-feature-gate.tsx`), `ClientOnly` / `useMounted`
-(`components/client-only.tsx`), `SafeDate`/`SafeTime`/`SafeNumber`
-(`components/safe-format.tsx`), `CashGiftModal`, `CeremonyAddonModal`,
+(`components/client-only.tsx`), `CashGiftModal`, `CeremonyAddonModal`,
 `InvitationUploadModal`, `InvitationBroadcastModal` (`components/`).
 `ReviewBadge` (`components/review-badge.tsx`) — SSR-safe, real-data social-proof
 stars; renders nothing until a review exists in the public `reviews` collection
@@ -183,16 +182,15 @@ stars; renders nothing until a review exists in the public `reviews` collection
 
 ---
 
-## SSR / Hydration Safety — `@/components/client-only`, `@/components/safe-format`
+## SSR / Hydration Safety — `@/components/client-only`
 Server-rendered HTML must match the client's first render. An automated SSR lint
 (`eslint.ssr.config.mjs` — do not delete) runs after every build and fails it on unsafe
-patterns. Use these primitives instead of hand-rolling fixes:
+patterns. Use these patterns instead of hand-rolling fixes:
 | Primitive | Import | Use for |
 |-----------|--------|---------|
 | `ClientOnly` | `@/components/client-only` | Anything browser-only or non-deterministic: `window`/`localStorage` reads, live clocks, random values, third-party widgets. Pass a `fallback` sized like the content. |
 | `useMounted()` | `@/components/client-only` | Hook variant when you need the boolean directly. |
-| `SafeDate` / `SafeTime` | `@/components/safe-format` | Dates/times — formats with explicit locale + UTC so SSR matches client. `localize` re-renders in the visitor's timezone after mount. |
-| `SafeNumber` | `@/components/safe-format` | Numbers/currency (`currency="USD"`), same guarantees. |
+| Explicit locale/time zone | `Intl` formatting APIs | Dates, times, and numbers rendered on both server and client; specify the same locale and (for dates/times) time zone in both environments. Defer visitor-specific formatting until after mount. |
 Rules of thumb: never touch `window`/`document` at module scope; never seed `useState` with
 `Date.now()`/`Math.random()`/`new Date()`; never call `toLocaleString`-style methods without
 an explicit locale (and `timeZone` for dates).

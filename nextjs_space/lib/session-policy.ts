@@ -128,14 +128,3 @@ export function classifyDeviceLabel(userAgent: string | null): string {
     : 'Browser';
   return `${browser} · ${os}`;
 }
-
-/** Compact human duration, e.g. "30 min", "14 days". */
-export function fmtDuration(ms: number): string {
-  if (ms <= 0) return '0 min';
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} hr${hours > 1 ? 's' : ''}`;
-  const days = Math.round(hours / 24);
-  return `${days} day${days > 1 ? 's' : ''}`;
-}
