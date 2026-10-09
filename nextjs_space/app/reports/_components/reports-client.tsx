@@ -133,7 +133,7 @@ export function ReportsClient() {
           const d: any = doc.data();
           acc.budgetEstimated += Number(d?.estimatedCost) || 0;
           acc.budgetActual += Number(d?.actualCost) || 0;
-          acc.budgetPaid += Number(d?.depositPaid) || (d?.isPaid ? Number(d?.actualCost) || 0 : 0);
+          acc.budgetPaid += d?.isPaid ? Number(d?.actualCost) || 0 : Number(d?.depositPaid) || 0;
         });
         gi.forEach((doc) => {
           const d: any = doc.data();
@@ -165,7 +165,7 @@ export function ReportsClient() {
     tasksTotal: tasks.length,
     budgetEstimated: budgetItems.reduce((s: number, b: any) => s + (Number(b.estimatedCost) || 0), 0),
     budgetActual: budgetItems.reduce((s: number, b: any) => s + (Number(b.actualCost) || 0), 0),
-    budgetPaid: budgetItems.reduce((s: number, b: any) => s + (Number(b.depositPaid) || (b.isPaid ? Number(b.actualCost) || 0 : 0)), 0),
+    budgetPaid: budgetItems.reduce((s: number, b: any) => s + (b.isPaid ? Number(b.actualCost) || 0 : Number(b.depositPaid) || 0), 0),
     giftsReceived: gifts.filter((g: any) => g.status === 'completed').reduce((s: number, g: any) => s + (Number(g.amount) || 0), 0),
     giftsPledged: gifts.filter((g: any) => g.status === 'pending').reduce((s: number, g: any) => s + (Number(g.amount) || 0), 0),
     vendorsTotal: vendors.reduce((s: number, v: any) => s + (Number(v.totalAmount) || 0), 0),

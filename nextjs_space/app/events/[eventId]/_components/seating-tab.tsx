@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useSeatingChart, useGuests } from '@/lib/hooks/use-firestore-data';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import type { TableData, Seat, GuestData, TableType } from '@/types/firestore';
-import { Plus, Trash2, Search, Download, Armchair, Star, Leaf } from 'lucide-react';
+import { Plus, Trash2, Search, Download, Armchair, Star, Leaf, Minus, Maximize2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -26,6 +27,9 @@ const CANVAS_PAD = 12;
 /** Space around tables for visible seat markers and between neighboring tables. */
 const TABLE_GAP = 24;
 const PLACEMENT_STEP = 24;
+const SNAP_GRID_SIZE = 30;
+const MIN_CANVAS_ZOOM = 0.6;
+const MAX_CANVAS_ZOOM = 1.5;
 
 /**
  * Rendered size (css px) of each table type. Shared by the placement/clamping
@@ -42,6 +46,10 @@ function tableSize(type: TableType | undefined): { w: number; h: number } {
 function clampToCanvas(value: number, size: number, extent: number): number {
   const max = Math.max(TABLE_GAP, extent - size - TABLE_GAP);
   return Math.min(Math.max(TABLE_GAP, value), max);
+}
+
+function snapToGrid(value: number, enabled: boolean): number {
+  return enabled ? Math.round(value / SNAP_GRID_SIZE) * SNAP_GRID_SIZE : value;
 }
 
 /** Find the next grid position with enough clearance for the table and seats. */
@@ -77,6 +85,9 @@ export function SeatingTab({ eventId }: { eventId: string }) {
   const [newTableType, setNewTableType] = useState<TableType>('round');
   const [newTableName, setNewTableName] = useState('');
   const [newTableCap, setNewTableCap] = useState(8);
+  const [canvasZoom, setCanvasZoom] = useState(1);
+  const [snapToGridEnabled, setSnapToGridEnabled] = useState(false);
+  const [canvasWidth, setCanvasWidth] = useState(0);
   const [assignSeat, setAssignSeat] = useState<{ tableId: string; seatId: string } | null>(null);
   const [dragging, setDragging] = useState<{ tableId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
 
@@ -84,9 +95,18 @@ export function SeatingTab({ eventId }: { eventId: string }) {
   // element's real pixel size — which is only ~340px wide on a phone, not the
   // ~900px the old hardcoded spawn range assumed.
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const floorStageRef = useRef<HTMLDivElement | null>(null);
   const canvasBounds = useCallback((): { width: number; height: number } => {
     const rect = canvasRef.current?.getBoundingClientRect();
     return { width: rect?.width ?? 900, height: rect?.height ?? 500 };
+  }, []);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() => setCanvasWidth(canvas.clientWidth));
+    observer.observe(canvas);
+    setCanvasWidth(canvas.clientWidth);
+    return () => observer.disconnect();
   }, []);
   const floorPlanHeight = useMemo(() => Math.max(
     500,
@@ -185,22 +205,22 @@ export function SeatingTab({ eventId }: { eventId: string }) {
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging) return;
-    const dx = e.clientX - dragging.startX;
-    const dy = e.clientY - dragging.startY;
-    // Clamp to the visible canvas: it clips its overflow, so a table dragged
-    // past an edge (very easy on a phone) would disappear for good.
+    const dx = (e.clientX - dragging.startX) / canvasZoom;
+    const dy = (e.clientY - dragging.startY) / canvasZoom;
     const bounds = canvasBounds();
     const tables = (chart?.tables ?? []).map((t: TableData) => {
       if (t?.id !== dragging.tableId) return t;
       const { w, h } = tableSize(t?.type);
+      const rawX = snapToGrid(dragging.origX + dx, snapToGridEnabled);
+      const rawY = snapToGrid(dragging.origY + dy, snapToGridEnabled);
       return {
         ...t,
-        x: clampToCanvas(dragging.origX + dx, w, bounds.width),
-        y: clampToCanvas(dragging.origY + dy, h, bounds.height),
+        x: clampToCanvas(rawX, w, canvasWidth || bounds.width),
+        y: clampToCanvas(rawY, h, Math.max(floorPlanHeight, rawY + h + TABLE_GAP)),
       };
     });
     setChart({ ...chart, tables, updatedAt: new Date() });
-  }, [dragging, chart, setChart, canvasBounds]);
+  }, [dragging, chart, setChart, canvasBounds, canvasZoom, canvasWidth, snapToGridEnabled, floorPlanHeight]);
 
   const handlePointerUp = useCallback(() => {
     // Drag moves update local state for smoothness; persist the final positions
@@ -220,9 +240,15 @@ export function SeatingTab({ eventId }: { eventId: string }) {
   const exportPNG = async () => {
     try {
       const html2canvas = (await import('html2canvas')).default;
-      const el = document.getElementById('seating-canvas');
-      if (!el) return;
-      const canvas = await html2canvas(el);
+      const stage = floorStageRef.current;
+      if (!stage) return;
+      const canvas = await html2canvas(stage, {
+        width: canvasWidth,
+        height: floorPlanHeight,
+        windowWidth: canvasWidth,
+        windowHeight: floorPlanHeight,
+        scale: 1 / canvasZoom,
+      });
       const a = document.createElement('a');
       a.href = canvas.toDataURL('image/png');
       a.download = 'seating-chart.png';
@@ -242,17 +268,72 @@ export function SeatingTab({ eventId }: { eventId: string }) {
             <Button variant="outline" size="sm" onClick={exportPNG} className="gap-1"><Download className="h-3.5 w-3.5" /> PNG</Button>
           </div>
         </div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Zoom out"
+              disabled={canvasZoom <= MIN_CANVAS_ZOOM}
+              onClick={() => setCanvasZoom((zoom) => Math.max(MIN_CANVAS_ZOOM, Math.round((zoom - 0.1) * 10) / 10))}
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </Button>
+            <span className="w-12 text-center text-xs tabular-nums" aria-live="polite">{Math.round(canvasZoom * 100)}%</span>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Zoom in"
+              disabled={canvasZoom >= MAX_CANVAS_ZOOM}
+              onClick={() => setCanvasZoom((zoom) => Math.min(MAX_CANVAS_ZOOM, Math.round((zoom + 0.1) * 10) / 10))}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Reset floor plan zoom and position"
+              onClick={() => {
+                setCanvasZoom(1);
+                canvasRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+              }}
+            >
+              <Maximize2 className="mr-1 h-3.5 w-3.5" /> Reset
+            </Button>
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+            Snap to grid
+            <Switch checked={snapToGridEnabled} onCheckedChange={setSnapToGridEnabled} aria-label="Snap dragged tables to the grid" />
+          </label>
+        </div>
         <div
           id="seating-canvas"
           ref={canvasRef}
-          className="relative overflow-hidden rounded-xl border border-border/50 bg-muted/30"
-          style={{ minHeight: floorPlanHeight, boxShadow: 'var(--shadow-sm)' }}
+          className="relative h-[min(70vh,700px)] min-h-[500px] overflow-auto rounded-xl border border-border/50 bg-muted/30"
+          style={{ boxShadow: 'var(--shadow-sm)' }}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
+          <div
+            className="relative"
+            style={{
+              width: canvasWidth ? canvasWidth * canvasZoom : '100%',
+              height: floorPlanHeight * canvasZoom,
+            }}
+          >
+            <div
+              ref={floorStageRef}
+              className="absolute left-0 top-0"
+              style={{
+                width: canvasWidth || '100%',
+                height: floorPlanHeight,
+                transform: `scale(${canvasZoom})`,
+                transformOrigin: 'top left',
+              }}
+            >
           {/* Grid dots */}
-          <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
+          <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)', backgroundSize: `${SNAP_GRID_SIZE}px ${SNAP_GRID_SIZE}px` }} />
 
           {(chart?.tables ?? []).map((tbl: TableData) => {
             const assigned = (tbl?.seats ?? []).filter((s: Seat) => !!s?.guestId)?.length ?? 0;
@@ -299,6 +380,8 @@ export function SeatingTab({ eventId }: { eventId: string }) {
               </div>
             );
           })}
+            </div>
+          </div>
         </div>
 
         {/* Selected table details */}

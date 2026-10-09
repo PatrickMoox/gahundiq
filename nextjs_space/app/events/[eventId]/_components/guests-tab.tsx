@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getEventLimits } from '@/lib/plan-entitlements';
 import type { DietaryPref, EventData, GuestData, RsvpStatus } from '@/types/firestore';
 import { toast } from 'sonner';
-import { Check, Link2, Mail, Plus, Search, Star, Trash2, Users } from 'lucide-react';
+import { Check, Link2, Mail, Plus, Search, Star, Trash2, Users, X } from 'lucide-react';
 
 const DIETARY_OPTIONS: DietaryPref[] = ['none', 'vegetarian', 'vegan', 'gluten-free', 'halal', 'kosher'];
 const RSVP_OPTIONS: RsvpStatus[] = ['pending', 'confirmed', 'declined'];
@@ -46,6 +46,8 @@ export function GuestsTab({ eventId, event }: { eventId: string; event: EventDat
   const { invites } = useEventInvites(eventId);
   const limits = getEventLimits(event);
   const [search, setSearch] = useState('');
+  const [rsvpFilter, setRsvpFilter] = useState<'all' | RsvpStatus>('all');
+  const [dietaryFilter, setDietaryFilter] = useState<'all' | DietaryPref>('all');
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -60,9 +62,21 @@ export function GuestsTab({ eventId, event }: { eventId: string; event: EventDat
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return guests;
-    return guests.filter((guest) => `${guest?.name ?? ''} ${guest?.email ?? ''}`.toLowerCase().includes(q));
-  }, [guests, search]);
+    return guests.filter((guest) => {
+      const matchesSearch = !q
+        || `${guest?.name ?? ''} ${guest?.email ?? ''}`.toLowerCase().includes(q);
+      const matchesRsvp = rsvpFilter === 'all' || effectiveRsvp(guest, invites) === rsvpFilter;
+      const matchesDietary = dietaryFilter === 'all' || (guest?.dietary ?? 'none') === dietaryFilter;
+      return matchesSearch && matchesRsvp && matchesDietary;
+    });
+  }, [guests, invites, search, rsvpFilter, dietaryFilter]);
+
+  const hasFilters = Boolean(search.trim()) || rsvpFilter !== 'all' || dietaryFilter !== 'all';
+  const clearFilters = () => {
+    setSearch('');
+    setRsvpFilter('all');
+    setDietaryFilter('all');
+  };
 
   const handleAdd = async () => {
     if (!form.name.trim()) { toast.error('Guest name is required.'); return; }
@@ -171,12 +185,44 @@ export function GuestsTab({ eventId, event }: { eventId: string; event: EventDat
         ))}
       </div>
 
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative sm:w-72">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={(e: any) => setSearch(e?.target?.value ?? '')} placeholder="Search guests" className="pl-9" />
+      <div className="mb-4 flex flex-col gap-3 rounded-xl border border-border/50 bg-card p-3 sm:p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input aria-label="Search guests" value={search} onChange={(e: any) => setSearch(e?.target?.value ?? '')} placeholder="Search name or email" className="pl-9" />
+          </div>
+          <Button onClick={() => setShowAdd(true)} className="gap-2"><Plus className="h-4 w-4" /> Add Guest</Button>
         </div>
-        <Button onClick={() => setShowAdd(true)} className="gap-2"><Plus className="h-4 w-4" /> Add Guest</Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select value={rsvpFilter} onValueChange={(value) => setRsvpFilter(value as 'all' | RsvpStatus)}>
+            <SelectTrigger aria-label="Filter guests by RSVP" className="sm:w-48"><SelectValue placeholder="All RSVP statuses" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All RSVP statuses</SelectItem>
+              {RSVP_OPTIONS.map((option) => <SelectItem key={option} value={option} className="capitalize">{option}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={dietaryFilter} onValueChange={(value) => setDietaryFilter(value as 'all' | DietaryPref)}>
+            <SelectTrigger aria-label="Filter guests by dietary preference" className="sm:w-56"><SelectValue placeholder="All dietary preferences" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All dietary preferences</SelectItem>
+              {DIETARY_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option} className="capitalize">
+                  {option === 'none' ? 'No preference' : option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex items-center justify-between gap-3 sm:ml-auto">
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              Showing {filtered.length} of {guests.length} guests
+            </p>
+            {hasFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
+                <X className="h-3.5 w-3.5" /> Clear filters
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -184,7 +230,7 @@ export function GuestsTab({ eventId, event }: { eventId: string; event: EventDat
         {!loading && filtered.length === 0 && (
           <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
             <Users className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
-            <p>{guests.length === 0 ? 'No guests yet. Add your first guest to start tracking RSVPs and invites.' : 'No guests match your search.'}</p>
+            <p>{guests.length === 0 ? 'No guests yet. Add your first guest to start tracking RSVPs and invites.' : 'No guests match these filters. Try changing or clearing them.'}</p>
           </div>
         )}
         {filtered.map((guest) => (
