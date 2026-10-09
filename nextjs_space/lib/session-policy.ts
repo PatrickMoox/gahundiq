@@ -13,6 +13,9 @@
 //   - Idle expiry is enforced locally: now - lastActiveAt > idle + grace.
 //   - Absolute expiry (`expiresAt`) is a hard ceiling enforced locally, and
 //     refreshed only on re-authentication.
+//   - Session governance is fail-closed: failure to create/read a session
+//     record or keep its heartbeat/watch alive signs the local user out with a
+//     visible message instead of silently running without enforcement.
 //   - Revocation (sign-out from another device, admin action, LRU eviction at
 //     the concurrent-device cap) is enforced by a live snapshot watch on the
 //     session doc, which force-signs-out the affected device.
@@ -42,6 +45,12 @@ export const SESSION_POLICY = {
 
   // How often the client refreshes lastActiveAt while visible.
   heartbeatMs: 60 * 1000, // 1 min
+
+  // Consecutive heartbeat write failures tolerated before ending the session.
+  heartbeatFailureLimit: 3,
+
+  // A visible session heartbeat must reach Firestore within this interval.
+  heartbeatTimeoutMs: 30 * 1000,
 
   // Concurrent active sessions allowed per account. When a new device signs in
   // at the cap, the least-recently-active live device is evicted: its session
@@ -78,12 +87,12 @@ export function isSessionActive(record: any, now: number): boolean {
   if (!record) return false;
   if (record.revokedAt != null || record.signedOutAt != null) return false;
   const expiresAt = tsToMs(record.expiresAt);
-  if (expiresAt > 0 && now >= expiresAt) return false;
   const lastActive = tsToMs(record.lastActiveAt);
+  if (expiresAt <= 0 || lastActive <= 0) return false;
+  if (expiresAt > 0 && now >= expiresAt) return false;
   if (lastActive > 0 && now - lastActive > SESSION_POLICY.idleTimeoutMs + SESSION_POLICY.idleGraceMs) {
     return false;
   }
-  // Missing timestamps: stay permissive (record may be mid-first-write).
   return true;
 }
 
@@ -95,20 +104,31 @@ export function sessionExpiresAt(now: number): number {
 /**
  * The stable id for THIS browser/device. Created once and persisted so session
  * records are reused across reloads (and evicted properly when the cap is hit).
- * Falls back to an in-memory uuid when localStorage is unavailable (private
- * mode / no store) — governance then degrades gracefully to in-memory.
+ * Falls back to a per-tab sessionStorage id when localStorage is unavailable,
+ * then to an in-memory id if browser storage is disabled entirely.
  */
 export function getOrCreateDeviceId(): string {
   try {
-    if (typeof localStorage === 'undefined') return uuidv4();
-    const existing = localStorage.getItem(SESSION_DEVICE_KEY);
-    if (existing) return existing;
-    const created = uuidv4();
-    localStorage.setItem(SESSION_DEVICE_KEY, created);
-    return created;
-  } catch {
-    return uuidv4();
-  }
+    if (typeof localStorage !== 'undefined') {
+      const existing = localStorage.getItem(SESSION_DEVICE_KEY);
+      if (existing) return existing;
+      const created = uuidv4();
+      localStorage.setItem(SESSION_DEVICE_KEY, created);
+      return created;
+    }
+  } catch { /* Try tab-scoped storage when persistent storage is unavailable. */ }
+
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const existing = sessionStorage.getItem(SESSION_DEVICE_KEY);
+      if (existing) return existing;
+      const created = uuidv4();
+      sessionStorage.setItem(SESSION_DEVICE_KEY, created);
+      return created;
+    }
+  } catch { /* Use an in-memory id if browser storage is disabled entirely. */ }
+
+  return uuidv4();
 }
 
 /** Human-friendly device label, e.g. "Chrome · macOS". Deterministic (SSR-safe). */

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -26,6 +26,7 @@ import { isSectionShared, type ShareableSection } from '@/lib/collab';
 import { InvitationUploadModal } from '@/components/invitation-upload-modal';
 import { InvitationBroadcastModal } from '@/components/invitation-broadcast-modal';
 import { CollaboratorModal } from '@/components/collaborator-modal';
+import { toast } from 'sonner';
 import {
   ArrowLeft, Calendar, MapPin, Users, Clock,
   Radio, UserCheck, Armchair, ClipboardList, DollarSign, Gift, MailPlus, Send, UserPlus
@@ -34,6 +35,7 @@ import {
 export function EventHubClient({ eventId }: { eventId: string }) {
   const { user, loading: authLoading } = useAuth();
   const { event, loading: eventLoading } = useEvent(eventId);
+  const observedCollaborators = useRef<{ eventId: string; ids: Set<string> } | null>(null);
   const { items: timelineItems } = useTimeline(eventId);
   const { guests } = useGuests(eventId);
   const { invites } = useEventInvites(eventId);
@@ -52,6 +54,20 @@ export function EventHubClient({ eventId }: { eventId: string }) {
   const isHost = Boolean(user && event && event.hostId === user.uid);
   const canSeeSection = (section: ShareableSection): boolean =>
     isHost || isSectionShared(event?.collaboratorAccess, user?.uid, section);
+
+  useEffect(() => {
+    if (!event || !user || event.hostId !== user.uid) return;
+    const ids = event.collaboratorIds ?? [];
+    const previous = observedCollaborators.current;
+    if (!previous || previous.eventId !== eventId) {
+      observedCollaborators.current = { eventId, ids: new Set(ids) };
+      return;
+    }
+    ids.filter((uid) => !previous.ids.has(uid)).forEach((uid) => {
+      toast.success(`${event.collaboratorNames?.[uid] || 'A collaborator'} accepted your invitation.`);
+    });
+    observedCollaborators.current = { eventId, ids: new Set(ids) };
+  }, [eventId, event?.hostId, event?.collaboratorIds, event?.collaboratorNames, user]);
 
   useEffect(() => {
     if (isHost) return;

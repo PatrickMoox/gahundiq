@@ -67,6 +67,15 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
 
   const pendingInvites = useMemo(() => invites.filter((i) => i.status === 'pending'), [invites]);
   const collaborators = event.collaboratorIds ?? [];
+  const acceptedInvites = useMemo(
+    () => invites.flatMap((invite) => {
+      const uid = invite.acceptedBy;
+      return invite.status === 'accepted' && uid && collaborators.includes(uid)
+        ? [{ invite, uid }]
+        : [];
+    }),
+    [invites, collaborators],
+  );
 
   const createInvite = async () => {
     const db = getFirestoreClient();
@@ -243,6 +252,19 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
                         </div>
                       </div>
                     )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {acceptedInvites.length > 0 && (
+              <ul className="mt-3 space-y-2" aria-label="Accepted collaborator invitations">
+                {acceptedInvites.map(({ invite, uid }) => (
+                  <li key={invite.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
+                    <span className="truncate text-xs text-muted-foreground">
+                      {event.collaboratorNames?.[uid] || `Collaborator ···${uid.slice(-4)}`}
+                    </span>
+                    <span className="flex-shrink-0 text-xs font-medium text-primary">Accepted</span>
                   </li>
                 ))}
               </ul>
