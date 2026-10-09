@@ -234,6 +234,8 @@ export interface CollabInvite {
   eventTitle?: string;
   invitedBy: string;
   invitedByName?: string;
+  /** Host may grant budget visibility and management on acceptance. */
+  shareBudget?: boolean;
   status: 'pending' | 'accepted' | 'revoked';
   createdAt?: any;
   expiresAt?: any;

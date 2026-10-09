@@ -41,6 +41,7 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [lastLink, setLastLink] = useState<string | null>(null);
+  const [shareBudgetForInvite, setShareBudgetForInvite] = useState(false);
   /** Collaborator whose privacy panel is expanded (host only). */
   const [expandedUid, setExpandedUid] = useState<string | null>(null);
 
@@ -83,11 +84,13 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
         eventTitle: event.title,
         invitedBy: user.uid,
         invitedByName: user.displayName || 'Host',
+        shareBudget: shareBudgetForInvite,
         status: 'pending',
         createdAt: serverTimestamp(),
         expiresAt: new Date(Date.now() + COLLAB_INVITE_TTL_MS),
       });
       setLastLink(collabInviteLink(token));
+      setShareBudgetForInvite(false);
       toast.success('Invite link created — share it with your partner.');
     } catch (error: any) {
       toast.error(error?.message ?? 'Could not create the invite.');
@@ -123,6 +126,7 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
         // deleteField (not null) — the self-join rules require every existing
         // name entry to be a string, so a null leftover would block re-joining.
         [`collaboratorNames.${uid}`]: deleteField(),
+        [`collaboratorAccess.${uid}`]: deleteField(),
         updatedAt: serverTimestamp(),
       });
       batch.delete(doc(db, 'collabClaims', collabClaimId(eventId, uid)));
@@ -249,6 +253,20 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
           {isHost && (
             <div>
               <p className="mb-2 text-sm font-medium">Invite by link</p>
+              <div className="mb-3 flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted/20 p-3">
+                <div>
+                  <p className="text-sm font-medium">Let them view and manage the budget</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    They can add, edit, and remove budget items. Off by default.
+                  </p>
+                </div>
+                <Switch
+                  checked={shareBudgetForInvite}
+                  disabled={creating}
+                  onCheckedChange={setShareBudgetForInvite}
+                  aria-label="Allow this collaborator to view and manage the budget"
+                />
+              </div>
               <Button onClick={createInvite} disabled={creating || collaborators.length >= MAX_COLLABORATORS} className="w-full gap-2">
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Create invite link
               </Button>
@@ -277,7 +295,12 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
                     return (
                       <li key={invite.id} className="rounded-lg border border-border px-3 py-2">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-xs text-muted-foreground">…{link.slice(-24)}</span>
+                          <div className="min-w-0">
+                            <span className="block truncate text-xs text-muted-foreground">…{link.slice(-24)}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {invite.shareBudget === true ? 'Budget access enabled' : 'Budget private'}
+                            </span>
+                          </div>
                           <div className="flex flex-shrink-0 gap-1">
                             <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyLink(link)} aria-label="Copy invite link">
                               {copied === link ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}

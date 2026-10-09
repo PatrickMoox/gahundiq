@@ -20,7 +20,7 @@ const FAQS = [
   },
   {
     q: 'Can someone else help me plan?',
-    a: 'Yes. Add collaborators to an event and they get their own access. Vendors can also get a focused pass with just their schedule and contact details.',
+    a: 'Yes. Add collaborators to an event and they get their own access. Budget access is off by default, but you can allow a collaborator to view and manage budget items when creating their invite. Vendors can also get a focused pass with just their schedule and contact details.',
   },
   {
     q: 'How do gift pledges work?',

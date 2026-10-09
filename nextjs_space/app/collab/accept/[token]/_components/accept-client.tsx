@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { arrayUnion, doc, getDoc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
+import { arrayUnion, deleteField, doc, getDoc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { Navbar } from '@/components/navbar';
@@ -59,10 +59,8 @@ export function AcceptClient({ token }: { token: string }) {
             setPhase('partial');
           } catch (error) {
             if (cancelled) return;
-            const code = error && typeof error === 'object' && 'code' in error
-              ? (error as { code?: string }).code
-              : undefined;
-            setPhase(code === 'permission-denied' ? 'removed' : 'partial');
+            console.error('Could not check collaborator membership:', error);
+            setPhase('partial');
           }
         }
         else if (data.status === 'accepted') setPhase('invalid');
@@ -83,6 +81,7 @@ export function AcceptClient({ token }: { token: string }) {
     await updateDoc(doc(db, 'events', invite.eventId), {
       collaboratorIds: arrayUnion(user.uid),
       [`collaboratorNames.${user.uid}`]: name,
+      [`collaboratorAccess.${user.uid}`]: invite.shareBudget === true ? { budget: true } : deleteField(),
       updatedAt: serverTimestamp(),
     });
   };
@@ -94,16 +93,20 @@ export function AcceptClient({ token }: { token: string }) {
     setBusy(true);
     try {
       const name = (user.displayName || user.email?.split('@')[0] || 'Collaborator').slice(0, 60);
-      // 1) Atomic: accept invite + write claim (rules verify the pair).
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'collabInvites', token), {
-        status: 'accepted', acceptedBy: user.uid, acceptedAt: serverTimestamp(), updatedAt: serverTimestamp(),
-      });
-      batch.set(doc(db, 'collabClaims', collabClaimId(invite.eventId, user.uid)), {
-        eventId: invite.eventId, uid: user.uid, displayName: name, token, createdAt: serverTimestamp(),
-      });
-      await batch.commit();
-      // 2) Self-join the event.
+      if (invite.status !== 'accepted') {
+        // Atomically accept the invite and write a claim; rules verify the pair.
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'collabInvites', token), {
+          status: 'accepted', acceptedBy: user.uid, acceptedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        });
+        batch.set(doc(db, 'collabClaims', collabClaimId(invite.eventId, user.uid)), {
+          eventId: invite.eventId, uid: user.uid, displayName: name, token,
+          shareBudget: invite.shareBudget === true,
+          createdAt: serverTimestamp(),
+        });
+        await batch.commit();
+      }
+      // The invite may already be accepted if the previous self-join failed.
       await joinEvent();
       toast.success('You are in — happy planning!');
       router.replace(`/events/${invite.eventId}`);
@@ -156,8 +159,11 @@ export function AcceptClient({ token }: { token: string }) {
               )}
             </p>
             <p className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-              You&apos;ll share core planning — timeline, guests, tasks and seating. Budget and vendor pricing stay
-              private unless the host opens them, and gift records always stay with the host.
+              You&apos;ll share core planning — timeline, guests, tasks and seating.{' '}
+              {invite.shareBudget === true
+                ? 'This invitation also includes budget access; vendor pricing stays private unless the host opens it.'
+                : 'Budget and vendor pricing stay private unless the host opens them.'}{' '}
+              Gift records always stay with the host.
             </p>
             <Button
               onClick={async () => {
