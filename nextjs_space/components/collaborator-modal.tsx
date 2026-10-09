@@ -56,7 +56,11 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
         rows.sort((a, b) => (b?.createdAt?.toMillis?.() ?? 0) - (a?.createdAt?.toMillis?.() ?? 0));
         setInvites(rows);
       },
-      () => setInvites([]),
+      (error) => {
+        console.error('Could not load collaborator invites:', error);
+        setInvites([]);
+        toast.error('Could not load collaborator invites. Please refresh and try again.');
+      },
     );
   }, [open, eventId, user]);
 
@@ -74,6 +78,7 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
     try {
       const token = generateCollabToken();
       await setDoc(doc(db, 'collabInvites', token), {
+        token,
         eventId,
         eventTitle: event.title,
         invitedBy: user.uid,

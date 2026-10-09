@@ -326,7 +326,11 @@ service cloud.firestore {
     // invitee's only permitted update is accepting (proving they hold the
     // token and that the link hasn't expired); the host may only revoke.
     match /collabInvites/{token} {
-      allow read: if signedIn() && token.size() >= 32;
+      // Invitees read a document by its capability token. Hosts list their
+      // event's invites using an eventId-filtered query; keeping list separate
+      // avoids requiring that query to constrain document ids by token length.
+      allow get: if signedIn() && token.size() >= 32;
+      allow list: if isEventHost(resource.data.eventId);
       allow create: if signedIn()
         && isEventHost(request.resource.data.eventId)
         && request.resource.data.token == token
@@ -335,7 +339,7 @@ service cloud.firestore {
         && request.resource.data.invitedBy == request.auth.uid
         && request.resource.data.expiresAt is timestamp
         && request.resource.data.keys().hasOnly([
-          'eventId', 'eventTitle', 'invitedBy', 'invitedByName',
+          'token', 'eventId', 'eventTitle', 'invitedBy', 'invitedByName',
           'createdAt', 'expiresAt', 'status']);
       allow update: if isAdmin()
         // Inviter-side: revoke only (never flip a revoked invite back to pending).
@@ -343,7 +347,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
           && request.resource.data.status in ['pending', 'revoked'])
         // Invitee-side: accept only, only themselves, only before expiry. The
-        // diff() key restriction plus the create rule's fixed 7-field shape
+        // diff() key restriction plus the create rule's fixed 8-field shape
         // fully constrain the resulting document — no extra shape check needed.
         || (signedIn()
           && resource.data.status == 'pending'

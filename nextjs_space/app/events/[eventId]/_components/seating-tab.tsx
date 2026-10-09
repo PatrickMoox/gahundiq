@@ -23,6 +23,9 @@ const DIETARY_BADGE: Record<string, { icon: string; label: string }> = {
 
 /** Gap kept between a table and the floor-plan edge. */
 const CANVAS_PAD = 12;
+/** Space around tables for visible seat markers and between neighboring tables. */
+const TABLE_GAP = 24;
+const PLACEMENT_STEP = 24;
 
 /**
  * Rendered size (css px) of each table type. Shared by the placement/clamping
@@ -37,8 +40,32 @@ function tableSize(type: TableType | undefined): { w: number; h: number } {
 
 /** Keep a table fully inside the visible floor plan (css px). */
 function clampToCanvas(value: number, size: number, extent: number): number {
-  const max = Math.max(CANVAS_PAD, extent - size - CANVAS_PAD);
-  return Math.min(Math.max(CANVAS_PAD, value), max);
+  const max = Math.max(TABLE_GAP, extent - size - TABLE_GAP);
+  return Math.min(Math.max(TABLE_GAP, value), max);
+}
+
+/** Find the next grid position with enough clearance for the table and seats. */
+function findTablePosition(
+  tables: TableData[],
+  type: TableType,
+  canvasWidth: number,
+): { x: number; y: number } {
+  const { w, h } = tableSize(type);
+  const min = TABLE_GAP;
+  const maxX = Math.max(min, canvasWidth - w - TABLE_GAP);
+
+  for (let y = min; ; y += PLACEMENT_STEP) {
+    for (let x = min; x <= maxX; x += PLACEMENT_STEP) {
+      const overlaps = tables.some((table) => {
+        const size = tableSize(table.type);
+        return x < table.x + size.w + TABLE_GAP
+          && x + w + TABLE_GAP > table.x
+          && y < table.y + size.h + TABLE_GAP
+          && y + h + TABLE_GAP > table.y;
+      });
+      if (!overlaps) return { x, y };
+    }
+  }
 }
 
 export function SeatingTab({ eventId }: { eventId: string }) {
@@ -61,6 +88,10 @@ export function SeatingTab({ eventId }: { eventId: string }) {
     const rect = canvasRef.current?.getBoundingClientRect();
     return { width: rect?.width ?? 900, height: rect?.height ?? 500 };
   }, []);
+  const floorPlanHeight = useMemo(() => Math.max(
+    500,
+    ...(chart?.tables ?? []).map((table) => table.y + tableSize(table.type).h + TABLE_GAP),
+  ), [chart?.tables]);
 
   // Which guests are already assigned
   const assignedGuestIds = useMemo(() => {
@@ -87,19 +118,17 @@ export function SeatingTab({ eventId }: { eventId: string }) {
 
   const addTable = useCallback(() => {
     const name = newTableName?.trim() || `Table ${(chart?.tables?.length ?? 0) + 1}`;
-    const cap = newTableCap || 8;
+    const cap = Math.min(20, Math.max(2, Math.floor(newTableCap) || 8));
     const seats: Seat[] = Array.from({ length: cap }, (_: any, i: number) => ({
       id: uuidv4(), tableId: uuidv4(), position: i + 1,
     }));
-    // Spawn inside the VISIBLE canvas. The previous `100 + random * 400` ignored
-    // the real size, so on a phone (canvas ≈ 340px wide + overflow-hidden) a new
-    // table was placed outside the viewport with no way to drag it back.
     const { w, h } = tableSize(newTableType);
     const bounds = canvasBounds();
+    const { x, y } = findTablePosition(chart?.tables ?? [], newTableType, bounds.width);
     const tbl: TableData = {
       id: uuidv4(), name, type: newTableType, capacity: cap,
-      x: clampToCanvas(CANVAS_PAD + Math.random() * Math.max(1, bounds.width - w - CANVAS_PAD * 4), w, bounds.width),
-      y: clampToCanvas(CANVAS_PAD + Math.random() * Math.max(1, bounds.height - h - CANVAS_PAD * 4), h, bounds.height),
+      x: clampToCanvas(x, w, bounds.width),
+      y,
       seats,
     };
     tbl.seats = tbl.seats.map((s: Seat) => ({ ...s, tableId: tbl.id }));
@@ -216,8 +245,8 @@ export function SeatingTab({ eventId }: { eventId: string }) {
         <div
           id="seating-canvas"
           ref={canvasRef}
-          className="relative min-h-[500px] overflow-hidden rounded-xl border border-border/50 bg-muted/30"
-          style={{ boxShadow: 'var(--shadow-sm)' }}
+          className="relative overflow-hidden rounded-xl border border-border/50 bg-muted/30"
+          style={{ minHeight: floorPlanHeight, boxShadow: 'var(--shadow-sm)' }}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
@@ -253,8 +282,8 @@ export function SeatingTab({ eventId }: { eventId: string }) {
                 </div>
                 {/* Seat indicators around table */}
                 <div className="absolute inset-0 pointer-events-none">
-                  {(tbl?.seats ?? []).slice(0, 8).map((seat: Seat, si: number) => {
-                    const angle = (si / Math.min((tbl?.seats?.length ?? 8), 8)) * Math.PI * 2 - Math.PI / 2;
+                  {(tbl?.seats ?? []).map((seat: Seat, si: number) => {
+                    const angle = (si / Math.max((tbl?.seats?.length ?? 0), 1)) * Math.PI * 2 - Math.PI / 2;
                     const rx = (w / 2) + 12;
                     const ry = (h / 2) + 12;
                     const cx = w / 2 + rx * Math.cos(angle) - 6;
