@@ -17,12 +17,12 @@ type PlanningCollection = keyof typeof COLLECTION_LIMITS;
 const ALLOWED_FIELDS: Record<PlanningCollection, string[]> = {
   budget: ['eventId', 'category', 'name', 'estimatedCost', 'actualCost', 'depositPaid', 'balanceDue', 'isPaid', 'dueDate', 'vendorId', 'notes'],
   vendors: ['eventId', 'category', 'name', 'contactName', 'phone', 'email', 'website', 'arrivalTime', 'totalAmount', 'depositPaid', 'notes'],
-  timeline: ['eventId', 'track', 'startTime', 'endTime', 'title', 'description', 'assignedTo', 'color', 'status', 'order'],
-  tasks: ['eventId', 'title', 'milestone', 'priority', 'category', 'assignedTo', 'description', 'dueDate', 'status'],
+  timeline: ['eventId', 'track', 'startTime', 'endTime', 'title', 'description', 'assignedTo', 'vendorId', 'budgetItemId', 'color', 'status', 'order'],
+  tasks: ['eventId', 'title', 'milestone', 'priority', 'category', 'assignedTo', 'vendorId', 'budgetItemId', 'description', 'dueDate', 'status'],
 };
 
 const STRING_FIELDS: Record<PlanningCollection, string[]> = {
-  budget: ['category', 'name', 'vendorId', 'notes'],
+  budget: ['category', 'name', 'notes'],
   vendors: ['category', 'name', 'contactName', 'phone', 'email', 'website', 'arrivalTime', 'notes'],
   timeline: ['track', 'startTime', 'endTime', 'title', 'description', 'assignedTo', 'color', 'status'],
   tasks: ['title', 'milestone', 'priority', 'category', 'assignedTo', 'description', 'status'],
@@ -47,6 +47,11 @@ function normalizeData(collection: PlanningCollection, input: unknown, eventId: 
   for (const field of STRING_FIELDS[collection]) {
     if (field in input && typeof input[field] !== 'string') {
       throw new RequestError(`${field} must be text.`, 400);
+    }
+  }
+  for (const field of ['vendorId', 'budgetItemId']) {
+    if (field in input && input[field] !== null && (typeof input[field] !== 'string' || !input[field] || input[field].includes('/'))) {
+      throw new RequestError(`${field} must be a valid reference or null.`, 400);
     }
   }
 
@@ -152,6 +157,25 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
         if (sectionAllowed !== true) {
           throw new RequestError('The host has not shared this section with you.', 403);
         }
+      }
+
+      for (const [field, targetCollection, requiredSection] of [
+        ['vendorId', 'vendors', 'vendors'],
+        ['budgetItemId', 'budget', 'budget'],
+      ] as const) {
+        const referenceId = data[field];
+        if (typeof referenceId !== 'string') continue;
+        if (!isAdmin && collaborator && event.hostId !== decodedToken.uid) {
+          const access = isRecord(event.collaboratorAccess) ? event.collaboratorAccess : {};
+          const accessEntry = access[decodedToken.uid];
+          const userAccess = isRecord(accessEntry) ? accessEntry : {};
+          const sectionDefault = requiredSection !== 'budget' && requiredSection !== 'vendors';
+          if ((userAccess[requiredSection] ?? sectionDefault) !== true) {
+            throw new RequestError(`The host must share ${requiredSection} access before you can link it.`, 403);
+          }
+        }
+        const referenceSnapshot = await transaction.get(eventRef.collection(targetCollection).doc(referenceId));
+        if (!referenceSnapshot.exists) throw new RequestError(`Selected ${requiredSection === 'budget' ? 'budget item' : 'vendor'} was not found in this ceremony.`, 400);
       }
 
       let usageCount: number | null = null;

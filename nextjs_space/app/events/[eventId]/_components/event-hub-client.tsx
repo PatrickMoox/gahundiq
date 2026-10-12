@@ -20,7 +20,7 @@ import { BudgetTab } from './budget-tab';
 import { GiftsTab } from './gifts-tab';
 import { GuestsTab } from './guests-tab';
 import { PlanFeatureGate } from '@/components/plan-feature-gate';
-import { useGuests, useTimeline, useEventInvites } from '@/lib/hooks/use-firestore-data';
+import { useBudget, useGuests, useTimeline, useEventInvites, useVendors } from '@/lib/hooks/use-firestore-data';
 import { useSubscription } from '@/lib/hooks/use-subscription';
 import { getGuestLimit, getInvitationLimit } from '@/lib/plan-entitlements';
 import { rsvpCounts } from '@/lib/rsvp';
@@ -39,6 +39,10 @@ export function EventHubClient({ eventId }: { eventId: string }) {
   const { event, loading: eventLoading } = useEvent(eventId);
   const observedCollaborators = useRef<{ eventId: string; ids: Set<string> } | null>(null);
   const { items: timelineItems } = useTimeline(eventId);
+  const canLoadSection = (section: ShareableSection): boolean =>
+    Boolean(user && event && (event.hostId === user.uid || isSectionShared(event.collaboratorAccess, user.uid, section)));
+  const { vendors } = useVendors(eventId, canLoadSection('vendors'));
+  const { items: budgetItems } = useBudget(eventId, canLoadSection('budget'));
   const { guests } = useGuests(eventId);
   const { invites } = useEventInvites(eventId);
   const router = useRouter();
@@ -177,15 +181,15 @@ export function EventHubClient({ eventId }: { eventId: string }) {
               )}
             </TabsList>
 
-            <TabsContent value="timeline"><TimelineTab eventId={eventId} event={event} /></TabsContent>
+            <TabsContent value="timeline"><TimelineTab eventId={eventId} event={event} vendors={canSeeSection('vendors') ? vendors : []} budgetItems={canSeeSection('budget') ? budgetItems : []} canLinkVendors={canSeeSection('vendors')} canLinkBudget={canSeeSection('budget')} /></TabsContent>
             {canSeeSection('vendors') && (
-              <TabsContent value="vendors"><VendorsTab eventId={eventId} event={event} timeline={timelineItems} /></TabsContent>
+              <TabsContent value="vendors"><VendorsTab eventId={eventId} event={event} timeline={timelineItems} budgetItems={canSeeSection('budget') ? budgetItems : []} canLinkBudget={canSeeSection('budget')} /></TabsContent>
             )}
             <TabsContent value="guests"><GuestsTab eventId={eventId} event={event} guestLimit={guestLimit} /></TabsContent>
             <TabsContent value="seating"><PlanFeatureGate event={event} feature="seating"><SeatingTab eventId={eventId} /></PlanFeatureGate></TabsContent>
-            <TabsContent value="tasks"><TasksTab eventId={eventId} event={event} /></TabsContent>
+            <TabsContent value="tasks"><TasksTab eventId={eventId} event={event} vendors={canSeeSection('vendors') ? vendors : []} budgetItems={canSeeSection('budget') ? budgetItems : []} canLinkVendors={canSeeSection('vendors')} canLinkBudget={canSeeSection('budget')} /></TabsContent>
             {canSeeSection('budget') && (
-              <TabsContent value="budget"><BudgetTab eventId={eventId} event={event} /></TabsContent>
+              <TabsContent value="budget"><BudgetTab eventId={eventId} event={event} vendors={canSeeSection('vendors') ? vendors : []} canLinkVendors={canSeeSection('vendors')} /></TabsContent>
             )}
             {isHost && (
               <TabsContent value="gifts"><PlanFeatureGate event={event} feature="gifts"><GiftsTab eventId={eventId} event={event} /></PlanFeatureGate></TabsContent>

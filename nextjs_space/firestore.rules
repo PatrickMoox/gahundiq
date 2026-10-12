@@ -74,6 +74,26 @@ service cloud.firestore {
           .get(section, section != 'budget' && section != 'vendors');
     }
 
+    function validPlanningReferences(eventId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let vendorPath = /databases/$(database)/documents/events/$(eventId)/vendors/$(request.resource.data.get('vendorId', ''));
+      let budgetPath = /databases/$(database)/documents/events/$(eventId)/budget/$(request.resource.data.get('budgetItemId', ''));
+      return (!changed.hasAny(['vendorId'])
+          || request.resource.data.get('vendorId', null) == null
+          || (request.resource.data.get('vendorId', null) is string
+            && exists(vendorPath)
+            && get(vendorPath).data.eventId == eventId))
+        && (!changed.hasAny(['budgetItemId'])
+          || request.resource.data.get('budgetItemId', null) == null
+          || (request.resource.data.get('budgetItemId', null) is string
+            && exists(budgetPath)
+            && get(budgetPath).data.eventId == eventId))
+        && (!changed.hasAny(['vendorId'])
+          || isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors'))
+        && (!changed.hasAny(['budgetItemId'])
+          || isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget'));
+    }
+
     function validCollaboratorSelfJoinAccess(eventId) {
       let access = request.resource.data.get('collaboratorAccess', {});
       let priorAccess = resource.data.get('collaboratorAccess', {});
@@ -314,7 +334,9 @@ service cloud.firestore {
         // Creates go through the authenticated server endpoint so free-plan
         // quotas cannot be bypassed by writing directly with the client SDK.
         allow create: if isAdmin();
-        allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
+        allow update: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline'))
+          && validPlanningReferences(eventId);
+        allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
       }
 
       match /vendors/{recordId} {
@@ -331,7 +353,9 @@ service cloud.firestore {
       match /tasks/{recordId} {
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
         allow create: if isAdmin();
-        allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
+        allow update: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks'))
+          && validPlanningReferences(eventId);
+        allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
       }
 
       match /budget/{recordId} {
@@ -339,7 +363,9 @@ service cloud.firestore {
         // creation is server-mediated rather than premium-only.
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget');
         allow create: if isAdmin();
-        allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget');
+        allow update: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget'))
+          && validPlanningReferences(eventId);
+        allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget');
       }
 
       match /guests/{recordId} {

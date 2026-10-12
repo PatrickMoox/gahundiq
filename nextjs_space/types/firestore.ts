@@ -82,6 +82,8 @@ export interface TimelineItem {
   title: string;
   description?: string;
   assignedTo?: string;
+  vendorId?: string | null;
+  budgetItemId?: string | null;
   color: string;
   status: TimelineStatus;
   order: number;
@@ -170,6 +172,8 @@ export interface Task {
   milestone: Milestone;
   status: TaskStatus;
   assignedTo?: string;
+  vendorId?: string | null;
+  budgetItemId?: string | null;
   dueDate?: any;
   priority: TaskPriority;
   category: string;
@@ -187,7 +191,7 @@ export interface BudgetItem {
   depositPaid: number;
   balanceDue: number;
   dueDate?: any;
-  vendorId?: string;
+  vendorId?: string | null;
   notes?: string;
   isPaid: boolean;
   createdAt: any;

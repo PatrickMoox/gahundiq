@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { BudgetItem, EventData } from '@/types/firestore';
+import type { BudgetItem, EventData, Vendor } from '@/types/firestore';
 import { formatMoney } from '@/lib/currency';
 import { csvEscape } from '@/lib/utils';
 import { Plus, DollarSign, TrendingUp, TrendingDown, PieChart, Download, Trash2, Pencil, Upload } from 'lucide-react';
@@ -154,7 +154,7 @@ function parseBudgetCsv(text: string): CsvBudgetRow[] {
   });
 }
 
-export function BudgetTab({ eventId, event }: { eventId: string; event: EventData | null }) {
+export function BudgetTab({ eventId, event, vendors, canLinkVendors }: { eventId: string; event: EventData | null; vendors: Vendor[]; canLinkVendors: boolean }) {
   const currency = event?.currency;
   const { items, loading, addItem, updateItem, deleteItem } = useBudget(eventId);
   const [showForm, setShowForm] = useState(false);
@@ -164,7 +164,7 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
   const [importing, setImporting] = useState(false);
   const csvInputRef = useRef<HTMLInputElement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0, isPaid: false });
+  const [form, setForm] = useState({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0, isPaid: false, vendorId: '' });
   const itemLimit = event ? getPlanningItemLimit(event, 'budget') : FREE_LIMITS.budgetItems;
   const limitReached = itemLimit !== null && (items?.length ?? 0) >= itemLimit;
 
@@ -175,14 +175,14 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
   }, [items]);
 
   const resetForm = () => {
-    setForm({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0, isPaid: false });
+    setForm({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0, isPaid: false, vendorId: '' });
     setEditingId(null);
     setShowForm(false);
   };
 
   const openAddForm = () => {
     if (loading || limitReached) return;
-    setForm({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0, isPaid: false });
+    setForm({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0, isPaid: false, vendorId: '' });
     setEditingId(null);
     setShowForm(true);
   };
@@ -195,6 +195,7 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
       actualCost: Number(item.actualCost) || 0,
       depositPaid: Number(item.depositPaid) || 0,
       isPaid: Boolean(item.isPaid),
+      vendorId: item.vendorId ?? '',
     });
     setEditingId(item.id);
     setShowForm(true);
@@ -208,6 +209,7 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
     }
     const data = {
       ...form,
+      vendorId: form.vendorId || null,
       balanceDue: form.isPaid ? 0 : form.actualCost - form.depositPaid,
     };
     try {
@@ -407,7 +409,7 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
             squeezed into unreadable slivers instead of scrolling. */}
         <table className="w-full min-w-[760px] text-sm">
           <thead><tr className="border-b border-border/50 text-left text-xs text-muted-foreground">
-            <th className="px-3 py-2">Category</th><th className="px-3 py-2">Item</th><th className="px-3 py-2 text-right">Estimated</th>
+            <th className="px-3 py-2">Category</th><th className="px-3 py-2">Item</th><th className="px-3 py-2">Vendor</th><th className="px-3 py-2 text-right">Estimated</th>
             <th className="px-3 py-2 text-right">Actual</th><th className="px-3 py-2 text-right">Deposit</th><th className="px-3 py-2 text-right">Balance</th><th className="px-3 py-2">Payment</th><th className="px-3 py-2"></th>
           </tr></thead>
           <tbody>
@@ -417,6 +419,7 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
                 <tr key={item?.id} className={`border-b border-border/30 ${idx % 2 === 0 ? 'bg-muted/10' : ''}`}>
                   <td className="px-3 py-2"><Badge variant="outline" className="text-xs">{item?.category}</Badge></td>
                   <td className="px-3 py-2 font-medium">{item?.name}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{vendors.find((vendor) => vendor.id === item.vendorId)?.name ?? (item.vendorId ? 'Linked vendor unavailable' : '—')}</td>
                   <td className="px-3 py-2 text-right font-mono">{formatMoney(item?.estimatedCost, currency)}</td>
                   <td className="px-3 py-2 text-right font-mono">{formatMoney(item?.actualCost, currency)}</td>
                   <td className="px-3 py-2 text-right font-mono">{formatMoney(item?.depositPaid, currency)}</td>
@@ -514,6 +517,17 @@ export function BudgetTab({ eventId, event }: { eventId: string; event: EventDat
           <div className="space-y-3">
             <div><Label>Category</Label><Input value={form?.category ?? ''} onChange={(e: any) => setForm({ ...form, category: e?.target?.value ?? '' })} className="mt-1" placeholder="Venue, Catering..." /></div>
             <div><Label>Item Name</Label><Input value={form?.name ?? ''} onChange={(e: any) => setForm({ ...form, name: e?.target?.value ?? '' })} className="mt-1" /></div>
+            {canLinkVendors && (
+              <div>
+                <Label htmlFor="budget-vendor">Related vendor</Label>
+                <select id="budget-vendor" value={form.vendorId} onChange={(e) => setForm({ ...form, vendorId: e.target.value })}
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="">No vendor linked</option>
+                  {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name} · {vendor.category}</option>)}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">Links this budget line to the vendor record without copying their contract totals.</p>
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div><Label>Estimated</Label><Input type="number" min="0" step="0.01" value={form?.estimatedCost ?? 0} onChange={(e: any) => setForm({ ...form, estimatedCost: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>
               <div><Label>Actual</Label><Input type="number" min="0" step="0.01" value={form?.actualCost ?? 0} onChange={(e: any) => setForm({ ...form, actualCost: Number(e?.target?.value ?? 0) })} className="mt-1" /></div>

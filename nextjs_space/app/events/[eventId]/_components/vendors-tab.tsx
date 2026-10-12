@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Vendor, VendorCategory, EventData, TimelineItem } from '@/types/firestore';
+import type { BudgetItem, Vendor, VendorCategory, EventData, TimelineItem } from '@/types/firestore';
 import { Plus, Camera, Music, UtensilsCrossed, Flower2, UserCheck, Phone, Mail, Globe, Trash2, Link2, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
@@ -33,7 +33,15 @@ const emptyVendor: Omit<Vendor, 'id' | 'createdAt'> = {
   website: '', arrivalTime: '', totalAmount: 0, depositPaid: 0, notes: '',
 };
 
-export function VendorsTab({ eventId, event, timeline }: { eventId: string; event: EventData | null; timeline: TimelineItem[] }) {
+export function VendorsTab({
+  eventId, event, timeline, budgetItems, canLinkBudget,
+}: {
+  eventId: string;
+  event: EventData | null;
+  timeline: TimelineItem[];
+  budgetItems: BudgetItem[];
+  canLinkBudget: boolean;
+}) {
   const { vendors, loading, addVendor, updateVendor, deleteVendor } = useVendors(eventId);
   const [showSheet, setShowSheet] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -189,6 +197,14 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
                   </div>
                   <Progress value={paidPct} className="h-1.5" />
                 </div>
+                {canLinkBudget && budgetItems.some((item) => item.vendorId === v.id) && (
+                  <div className="mb-3 rounded-md bg-muted/40 p-2">
+                    <p className="text-xs font-medium">Linked budget lines</p>
+                    <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                      {budgetItems.filter((item) => item.vendorId === v.id).map((item) => <li key={item.id}>{item.name}</li>)}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="flex gap-1">
                   <Button variant="ghost" size="sm" aria-label={`Edit ${v?.name ?? 'vendor'}`} onClick={() => openEdit(v)}><Edit2 className="h-3.5 w-3.5" /></Button>

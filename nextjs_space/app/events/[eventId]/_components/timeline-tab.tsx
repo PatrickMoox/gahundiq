@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { EventData, TimelineItem } from '@/types/firestore';
+import type { BudgetItem, EventData, TimelineItem, Vendor } from '@/types/firestore';
 import { FREE_LIMITS, getPlanningItemLimit } from '@/lib/plan-entitlements';
 import { toast } from 'sonner';
 import { Plus, Clock, Trash2, Edit2, GripVertical } from 'lucide-react';
@@ -27,7 +27,16 @@ const emptyItem: Omit<TimelineItem, 'id'> = {
   title: '', description: '', assignedTo: '', color: '#4F46E5', status: 'upcoming', order: 0,
 };
 
-export function TimelineTab({ eventId, event }: { eventId: string; event: EventData }) {
+export function TimelineTab({
+  eventId, event, vendors, budgetItems, canLinkVendors, canLinkBudget,
+}: {
+  eventId: string;
+  event: EventData;
+  vendors: Vendor[];
+  budgetItems: BudgetItem[];
+  canLinkVendors: boolean;
+  canLinkBudget: boolean;
+}) {
   const { items, loading, addItem, updateItem, deleteItem } = useTimeline(eventId);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -45,14 +54,14 @@ export function TimelineTab({ eventId, event }: { eventId: string; event: EventD
 
   const openEdit = (item: TimelineItem) => {
     setEditingId(item?.id);
-    setForm({ eventId: item?.eventId, track: item?.track, startTime: item?.startTime, endTime: item?.endTime, title: item?.title, description: item?.description, assignedTo: item?.assignedTo, color: item?.color, status: item?.status, order: item?.order });
+    setForm({ eventId: item?.eventId, track: item?.track, startTime: item?.startTime, endTime: item?.endTime, title: item?.title, description: item?.description, assignedTo: item?.assignedTo, vendorId: item?.vendorId, budgetItemId: item?.budgetItemId, color: item?.color, status: item?.status, order: item?.order });
     setShowForm(true);
   };
 
   const handleSave = async () => {
     if (!form?.title?.trim()) return;
     const track = TRACKS.find((t: any) => t?.name === form?.track);
-    const data = { ...form, color: track?.color ?? form?.color };
+    const data = { ...form, vendorId: form.vendorId || null, budgetItemId: form.budgetItemId || null, color: track?.color ?? form?.color };
     try {
       if (editingId) {
         await updateItem?.(editingId, data);
@@ -115,6 +124,8 @@ export function TimelineTab({ eventId, event }: { eventId: string; event: EventD
                 </div>
                 <p className="truncate font-medium">{item?.title}</p>
                 {item?.assignedTo && <p className="text-xs text-muted-foreground">Assigned: {item?.assignedTo}</p>}
+                {canLinkVendors && item.vendorId && <p className="text-xs text-muted-foreground">Vendor: {vendors.find((vendor) => vendor.id === item.vendorId)?.name ?? 'Vendor unavailable'}</p>}
+                {canLinkBudget && item.budgetItemId && <p className="text-xs text-muted-foreground">Budget: {budgetItems.find((budgetItem) => budgetItem.id === item.budgetItemId)?.name ?? 'Budget item unavailable'}</p>}
               </div>
               <div className="flex gap-1 sm:opacity-0 transition-opacity group-hover:opacity-100">
                 <Button variant="ghost" size="sm" aria-label={`Edit ${item?.title ?? 'timeline item'}`} onClick={() => openEdit(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
@@ -167,6 +178,26 @@ export function TimelineTab({ eventId, event }: { eventId: string; event: EventD
             </div>
             <div><Label>Description</Label><Input value={form?.description ?? ''} onChange={(e: any) => setForm({ ...form, description: e?.target?.value ?? '' })} className="mt-1" /></div>
             <div><Label>Assigned To</Label><Input value={form?.assignedTo ?? ''} onChange={(e: any) => setForm({ ...form, assignedTo: e?.target?.value ?? '' })} className="mt-1" /></div>
+            {canLinkVendors && (
+              <div>
+                <Label htmlFor="timeline-vendor">Related vendor</Label>
+                <select id="timeline-vendor" value={form.vendorId ?? ''} onChange={(e) => setForm({ ...form, vendorId: e.target.value || undefined })}
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="">No vendor linked</option>
+                  {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name} · {vendor.category}</option>)}
+                </select>
+              </div>
+            )}
+            {canLinkBudget && (
+              <div>
+                <Label htmlFor="timeline-budget">Related budget item</Label>
+                <select id="timeline-budget" value={form.budgetItemId ?? ''} onChange={(e) => setForm({ ...form, budgetItemId: e.target.value || undefined })}
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="">No budget item linked</option>
+                  {budgetItems.map((budgetItem) => <option key={budgetItem.id} value={budgetItem.id}>{budgetItem.name}</option>)}
+                </select>
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
               <Button onClick={handleSave}>{editingId ? 'Save Changes' : 'Add Item'}</Button>

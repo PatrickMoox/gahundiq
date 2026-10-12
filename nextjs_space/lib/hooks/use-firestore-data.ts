@@ -10,14 +10,15 @@ function normalize<T extends Record<string, any>>(id: string, data: T): T & { id
   return Object.fromEntries(Object.entries({ ...data, id }).map(([key, value]) => [key, value?.toDate instanceof Function ? value.toDate() : value])) as T & { id: string };
 }
 
-function useCollection<T extends Record<string, any>>(eventId: string, name: string) {
+function useCollection<T extends Record<string, any>>(eventId: string, name: string, enabled = true) {
   const { user } = useAuth();
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const db = getFirestoreClient();
-    if (!db || !user || !eventId) { setItems([]); setLoading(false); return; }
+    if (!enabled || !db || !user || !eventId) { setItems([]); setLoading(false); return; }
+    setLoading(true);
     const unsubscribe = onSnapshot(collection(db, 'events', eventId, name), (snapshot) => {
       const data = snapshot.docs.map((item) => normalize(item.id, item.data()) as unknown as T);
       // Sort client-side by createdAt to avoid requiring a Firestore composite index
@@ -30,7 +31,7 @@ function useCollection<T extends Record<string, any>>(eventId: string, name: str
       setLoading(false);
     }, () => { setItems([]); setLoading(false); });
     return unsubscribe;
-  }, [eventId, name, user]);
+  }, [enabled, eventId, name, user]);
 
   const addItem = useCallback(async (data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (['budget', 'vendors', 'timeline', 'tasks', 'guests'].includes(name)) {
@@ -107,8 +108,8 @@ export function useTimeline(eventId: string) {
   return { ...result, setItems: () => undefined };
 }
 
-export function useVendors(eventId: string) {
-  const result = useCollection<Vendor>(eventId, 'vendors');
+export function useVendors(eventId: string, enabled = true) {
+  const result = useCollection<Vendor>(eventId, 'vendors', enabled);
   return { vendors: result.items, loading: result.loading, addVendor: result.addItem, updateVendor: result.updateItem, deleteVendor: result.deleteItem };
 }
 
@@ -117,8 +118,8 @@ export function useTasks(eventId: string) {
   return { tasks: result.items, loading: result.loading, addTask: result.addItem, updateTask: result.updateItem, deleteTask: result.deleteItem, setTasks: () => undefined };
 }
 
-export function useBudget(eventId: string) {
-  const result = useCollection<BudgetItem>(eventId, 'budget');
+export function useBudget(eventId: string, enabled = true) {
+  const result = useCollection<BudgetItem>(eventId, 'budget', enabled);
   return { items: result.items, loading: result.loading, addItem: result.addItem, updateItem: result.updateItem, deleteItem: result.deleteItem };
 }
 

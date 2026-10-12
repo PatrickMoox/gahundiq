@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { EventData, Task, Milestone, TaskPriority, TaskStatus } from '@/types/firestore';
+import type { BudgetItem, EventData, Task, Milestone, TaskPriority, TaskStatus, Vendor } from '@/types/firestore';
 import { FREE_LIMITS, getPlanningItemLimit } from '@/lib/plan-entitlements';
 import { toast } from 'sonner';
 import { Plus, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Pencil } from 'lucide-react';
@@ -28,6 +28,8 @@ const EMPTY_FORM = {
   assignedTo: '',
   description: '',
   dueDate: '',
+  vendorId: '',
+  budgetItemId: '',
 };
 
 function dateInputValue(value: unknown): string {
@@ -50,7 +52,16 @@ function isOverdue(task: Task): boolean {
   return dueDate < today;
 }
 
-export function TasksTab({ eventId, event }: { eventId: string; event: EventData }) {
+export function TasksTab({
+  eventId, event, vendors, budgetItems, canLinkVendors, canLinkBudget,
+}: {
+  eventId: string;
+  event: EventData;
+  vendors: Vendor[];
+  budgetItems: BudgetItem[];
+  canLinkVendors: boolean;
+  canLinkBudget: boolean;
+}) {
   const { tasks, loading, addTask, updateTask, deleteTask } = useTasks(eventId);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -77,6 +88,8 @@ export function TasksTab({ eventId, event }: { eventId: string; event: EventData
       assignedTo: task.assignedTo ?? '',
       description: task.description ?? '',
       dueDate: dateInputValue(task.dueDate),
+      vendorId: task.vendorId ?? '',
+      budgetItemId: task.budgetItemId ?? '',
     });
     setShowForm(true);
   };
@@ -96,6 +109,8 @@ export function TasksTab({ eventId, event }: { eventId: string; event: EventData
       assignedTo: form.assignedTo.trim(),
       description: form.description.trim(),
       dueDate: form.dueDate ? new Date(`${form.dueDate}T12:00:00`) : null,
+      vendorId: form.vendorId || null,
+      budgetItemId: form.budgetItemId || null,
     };
     try {
       if (editingId) {
@@ -206,6 +221,8 @@ export function TasksTab({ eventId, event }: { eventId: string; event: EventData
                           <Badge variant={(PRIORITY_COLORS[task?.priority ?? 'medium'] ?? 'outline') as any} className="text-[10px]">{task?.priority}</Badge>
                           {task?.assignedTo && <span className="text-[10px] text-muted-foreground">{task?.assignedTo}</span>}
                         </div>
+                        {canLinkVendors && task.vendorId && <p className="mt-1 text-[10px] text-muted-foreground">Vendor: {vendors.find((vendor) => vendor.id === task.vendorId)?.name ?? 'Vendor unavailable'}</p>}
+                        {canLinkBudget && task.budgetItemId && <p className="mt-1 text-[10px] text-muted-foreground">Budget: {budgetItems.find((item) => item.id === task.budgetItemId)?.name ?? 'Budget item unavailable'}</p>}
                         {task?.dueDate && (
                           <p className={`mt-2 flex items-center gap-1 text-[10px] ${isOverdue(task) ? 'font-medium text-destructive' : 'text-muted-foreground'}`}>
                             {isOverdue(task) ? <AlertTriangle className="h-3 w-3" /> : <CalendarDays className="h-3 w-3" />}
@@ -248,6 +265,26 @@ export function TasksTab({ eventId, event }: { eventId: string; event: EventData
             </div>
             <div><Label htmlFor="task-category">Category</Label><Input id="task-category" value={form.category} onChange={(e: any) => setForm({ ...form, category: e?.target?.value ?? '' })} className="mt-1" placeholder="Venue, Catering, etc." /></div>
             <div><Label htmlFor="task-assignee">Assigned To</Label><Input id="task-assignee" value={form.assignedTo} onChange={(e: any) => setForm({ ...form, assignedTo: e?.target?.value ?? '' })} className="mt-1" /></div>
+            {canLinkVendors && (
+              <div>
+                <Label htmlFor="task-vendor">Related vendor</Label>
+                <select id="task-vendor" value={form.vendorId} onChange={(e) => setForm({ ...form, vendorId: e.target.value })}
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="">No vendor linked</option>
+                  {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name} · {vendor.category}</option>)}
+                </select>
+              </div>
+            )}
+            {canLinkBudget && (
+              <div>
+                <Label htmlFor="task-budget">Related budget item</Label>
+                <select id="task-budget" value={form.budgetItemId} onChange={(e) => setForm({ ...form, budgetItemId: e.target.value })}
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="">No budget item linked</option>
+                  {budgetItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </div>
+            )}
             <div><Label htmlFor="task-due-date">Due Date</Label><Input id="task-due-date" type="date" value={form.dueDate} onChange={(e: any) => setForm({ ...form, dueDate: e?.target?.value ?? '' })} className="mt-1" /></div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
