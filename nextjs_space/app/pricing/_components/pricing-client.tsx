@@ -7,15 +7,13 @@ import { Navbar } from '@/components/navbar';
 import { SiteFooter } from '@/components/site-footer';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
-import { CeremonyAddonModal } from '@/components/ceremony-addon-modal';
 import { CheckCircle2, X, Sparkles, ArrowRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { toast } from 'sonner';
 
 const fadeUp = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
 
 const PLANS = [
-  { name: 'Free', price: '$0', period: 'forever', desc: 'Explore the workspace before you commit', features: { events: '1 active ceremony', guests: 'Up to 25 guests', timeline: true, vendors: true, seating: false, tasks: true, budget: false, gifts: false, coordinator: false, support: 'Community' } },
+  { name: 'Free', price: '$0', period: 'forever', desc: 'Explore the workspace before you commit', features: { events: '1 active ceremony', guests: 'Up to 25 guests', timeline: 'Up to 5 entries', vendors: 'Up to 5 vendors', seating: false, tasks: 'Up to 10 tasks', budget: 'Up to 5 items', gifts: false, coordinator: false, support: 'Community' } },
   { name: 'Ceremony Pass', price: '$29', period: 'one-time', desc: 'Everything needed for one ceremony', popular: true, features: { events: '1 active ceremony', guests: 'Up to 250 guests', timeline: true, vendors: true, seating: true, tasks: true, budget: true, gifts: true, coordinator: true, support: 'Priority' } },
   { name: 'Planner', price: '$39', period: '/month', desc: 'For professionals managing ceremonies year-round', features: { events: 'Up to 10 active ceremonies', guests: 'Up to 2,500 guests', timeline: true, vendors: true, seating: true, tasks: true, budget: true, gifts: true, coordinator: true, support: 'Priority' } },
 ];
@@ -34,9 +32,9 @@ const FEATURE_ROWS = [
 ];
 
 const ADD_ONS = [
-  { id: 'ceremonies', name: 'Extra ceremonies', amount: '+5 ceremonies', price: '$5', priceValue: 5, period: 'one-time bundle' },
-  { id: 'guests', name: 'Guest capacity', amount: '+250 guests', price: '$5', priceValue: 5, period: 'one-time per event' },
-  { id: 'invites', name: 'Invitation broadcasts', amount: '+50 custom invitations', price: '$5', priceValue: 5, period: 'per bundle' },
+  { id: 'ceremonies', name: 'Extra ceremonies', amount: '+5 ceremonies', price: '$5', period: 'one-time bundle', benefit: 'Manage more active events at the same time. The added slots are available across your account after payment.' },
+  { id: 'guests', name: 'Guest capacity', amount: '+250 guests', price: '$5', period: 'one-time per event', benefit: 'Keep larger guest lists in one ceremony without splitting them across multiple events.' },
+  { id: 'invites', name: 'Invitation broadcasts', amount: '+50 recipients', price: '$5', period: 'per bundle', benefit: 'Record invitation broadcasts for more guest recipients in the selected ceremony.' },
 ];
 
 export function PricingClient() {
@@ -44,13 +42,10 @@ export function PricingClient() {
   const { user } = useAuth();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('');
-  const [selectedAddOns, setSelectedAddOns] = useState<Record<string, boolean>>({});
-  const [showCeremonyAddon, setShowCeremonyAddon] = useState(false);
-const [showStorageInfo, setShowStorageInfo] = useState(false);
+  const [selectedAddon, setSelectedAddon] = useState<(typeof ADD_ONS)[number] | null>(null);
 
   const activePlan = PLANS.find((plan) => plan.name === selectedPlan);
   const basePrice = activePlan?.price === '$0' ? 0 : Number(activePlan?.price?.replace('$', '') ?? 0);
-  const addOnTotal = ADD_ONS.reduce((total, addOn) => total + (selectedAddOns[addOn.id] ? addOn.priceValue : 0), 0);
 
   return (
     <div className="min-h-screen">
@@ -85,7 +80,7 @@ const [showStorageInfo, setShowStorageInfo] = useState(false);
                 <Button
                   className="mt-6 w-full gap-2"
                   variant={plan?.popular ? 'default' : 'outline'}
-                  onClick={() => { setSelectedPlan(plan?.name ?? ''); setSelectedAddOns({}); setShowUpgrade(true); }}
+                  onClick={() => { setSelectedPlan(plan?.name ?? ''); setShowUpgrade(true); }}
                 >
                   {plan?.name === 'Free' ? 'Get Started' : 'Upgrade'} <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -100,7 +95,7 @@ const [showStorageInfo, setShowStorageInfo] = useState(false);
           <motion.div variants={fadeUp} className="mb-16">
             <div className="mb-6 text-center">
               <h2 className="font-display text-2xl font-bold tracking-tight">Add only what you need</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Paid users can expand capacity without changing their base plan.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Add-ons activate only after confirmed payment. Checkout is not available yet, so selecting one will not change your plan or capacity.</p>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               {ADD_ONS.map((addOn) => (
@@ -108,12 +103,21 @@ const [showStorageInfo, setShowStorageInfo] = useState(false);
                   <p className="text-sm font-semibold">{addOn.name}</p>
                   <p className="mt-2 font-display text-2xl font-bold">{addOn.amount}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{addOn.price} {addOn.period}</p>
+                  <p className="mt-3 text-sm text-muted-foreground">{addOn.benefit}</p>
                   <div className="flex-1" />
-                  {addOn.id === 'ceremonies' ? (
-                    <Button className="mt-2 w-full" onClick={() => (user ? setShowCeremonyAddon(true) : router.push('/auth'))}>Buy top-up</Button>
-                  ) : (
-                    <Button variant="outline" className="mt-2 w-full" onClick={() => setShowStorageInfo(true)}>Learn more</Button>
-                  )}
+                  <Button
+                    className="mt-2 w-full"
+                    variant={addOn.id === 'ceremonies' ? 'default' : 'outline'}
+                    onClick={() => {
+                      if (!user) {
+                        router.push('/auth');
+                      } else {
+                        setSelectedAddon(addOn);
+                      }
+                    }}
+                  >
+                    {addOn.id === 'ceremonies' ? 'Add ceremonies' : addOn.id === 'guests' ? 'Add guest capacity' : 'Add broadcast capacity'}
+                  </Button>
                 </div>
               ))}
             </div>
@@ -166,35 +170,9 @@ const [showStorageInfo, setShowStorageInfo] = useState(false);
           </DialogHeader>
           <div className="space-y-4 py-4">
             {selectedPlan !== 'Free' && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Optional capacity add-ons</p>
-                {ADD_ONS.map((addOn) => (
-                  <button
-                    key={addOn.id}
-                    type="button"
-                    onClick={() => {
-                      if (addOn.id === 'invites') {
-                        setShowStorageInfo(true);
-                      } else {
-                        setSelectedAddOns((current) => ({ ...current, [addOn.id]: !current[addOn.id] }));
-                      }
-                    }}
-                    className={`flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors ${selectedAddOns[addOn.id] ? 'border-primary bg-primary/10' : 'border-border/50'}`}
-                  >
-                    <span>
-                      <span className="block text-sm font-medium">{addOn.amount}</span>
-                      <span className="block text-xs text-muted-foreground">{addOn.name} · {addOn.period}</span>
-                    </span>
-                    <span className="text-sm font-semibold">{addOn.price}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {selectedPlan !== 'Free' && (
               <div className="rounded-lg bg-muted/50 p-3 text-sm">
                 <div className="flex justify-between"><span>{selectedPlan} base price</span><span>${basePrice.toFixed(2)}</span></div>
-                <div className="flex justify-between text-muted-foreground"><span>Selected add-ons</span><span>${addOnTotal.toFixed(2)}</span></div>
-                <div className="mt-2 flex justify-between border-t border-border pt-2 font-bold"><span>Estimated total</span><span>${(basePrice + addOnTotal).toFixed(2)}</span></div>
+                <div className="mt-2 flex justify-between border-t border-border pt-2 font-bold"><span>Payment due today</span><span>$0.00</span></div>
               </div>
             )}
             <div className="rounded-lg border border-dashed border-border p-8 text-center">
@@ -214,28 +192,20 @@ const [showStorageInfo, setShowStorageInfo] = useState(false);
           </div>
         </DialogContent>
       </Dialog>
-      <CeremonyAddonModal open={showCeremonyAddon} onOpenChange={setShowCeremonyAddon} />
-      <Dialog open={showStorageInfo} onOpenChange={setShowStorageInfo}>
+      <Dialog open={selectedAddon !== null} onOpenChange={(open) => { if (!open) setSelectedAddon(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Invitation Broadcasts</DialogTitle>
-            <DialogDescription>Upload custom invitation designs and broadcast them to your guests.</DialogDescription>
+            <DialogTitle>{selectedAddon?.name}</DialogTitle>
+            <DialogDescription>{selectedAddon?.benefit}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="rounded-lg border border-border/50 bg-muted/30 p-4">
-              <h4 className="text-sm font-medium mb-2">What you can do:</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" /> Upload custom invitation designs (PNG, JPG, WEBP, PDF)</li>
-                <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" /> Broadcast invitations to all guests via email</li>
-                <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" /> Track delivery status per guest</li>
-                <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" /> Guests RSVP directly from the invitation</li>
-              </ul>
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg border border-dashed border-border p-5 text-center">
+              <p className="font-medium">Payment gateway not connected</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This add-on will not be activated and no payment or entitlement will be recorded. Once secure checkout is available, it will take effect only after payment is confirmed.
+              </p>
             </div>
-            <div className="rounded-lg bg-muted/50 p-3 text-sm">
-              <div className="flex justify-between font-bold"><span>Invitation broadcasts</span><span>$5 / 50 invitations</span></div>
-              <p className="mt-1 text-xs text-muted-foreground">One-time bundle — buy as many as you need</p>
-            </div>
-            <Button className="w-full" onClick={() => { setShowStorageInfo(false); if (!user) { router.push('/auth'); } else { toast.success('Invitation broadcasts available! Upload from your event hub.'); router.push('/dashboard'); } }}>{user ? 'Go to dashboard' : 'Sign in to get started'}</Button>
+            <Button className="w-full" onClick={() => setSelectedAddon(null)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>

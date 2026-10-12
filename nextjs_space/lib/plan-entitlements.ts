@@ -42,7 +42,25 @@ export function canUseFeature(event: EventData, _feature: PaidFeature): boolean 
 }
 
 export function getEventLimits(event: EventData) {
-  return event.tier === 'premium' ? PAID_LIMITS : FREE_LIMITS;
+  return {
+    ...(event.tier === 'premium' ? PAID_LIMITS : FREE_LIMITS),
+    guests: getGuestLimit(event),
+    invites: getInvitationLimit(event),
+  };
+}
+
+export function getGuestLimit(
+  event: Pick<EventData, 'tier' | 'guestCapacityOverride'>,
+  subscription?: Pick<Subscription, 'maxGuests'> | null,
+): number {
+  return event.guestCapacityOverride ?? subscription?.maxGuests ?? (event.tier === 'premium' ? PAID_LIMITS.guests : FREE_LIMITS.guests);
+}
+
+export function getInvitationLimit(
+  event: Pick<EventData, 'tier' | 'invitationCapacityOverride'>,
+  subscription?: Pick<Subscription, 'maxInvites'> | null,
+): number {
+  return event.invitationCapacityOverride ?? subscription?.maxInvites ?? (event.tier === 'premium' ? PAID_LIMITS.invites : FREE_LIMITS.invites);
 }
 
 /**

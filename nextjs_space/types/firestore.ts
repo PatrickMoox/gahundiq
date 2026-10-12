@@ -43,6 +43,10 @@ export interface EventData {
   /** Optional display label for the online invitation, e.g. "Canva Invite". */
   onlineInvitationLabel?: string;
   invitationBroadcasts?: InviteBroadcast[];
+  /** Admin-managed guest capacity override for this ceremony. */
+  guestCapacityOverride?: number;
+  /** Admin-managed invitation-recipient capacity override for this ceremony. */
+  invitationCapacityOverride?: number;
   collaboratorIds?: string[];
   /** uid → self-reported display name, written by the collaborator on join. */
   collaboratorNames?: Record<string, string>;
@@ -255,8 +259,10 @@ export interface Subscription {
   activeEventCount?: number;
   maxEvents?: number;
   extraCeremonies?: number;
+  /** Default maximum guests allowed per event owned by this account. */
   maxGuests?: number;
   extraGuests?: number;
+  /** Default maximum invitation recipients per event owned by this account. */
   maxInvites?: number;
   extraInvites?: number;
   storageGb?: number;

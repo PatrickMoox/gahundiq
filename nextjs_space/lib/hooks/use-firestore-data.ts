@@ -33,18 +33,19 @@ function useCollection<T extends Record<string, any>>(eventId: string, name: str
   }, [eventId, name, user]);
 
   const addItem = useCallback(async (data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (['budget', 'vendors', 'timeline', 'tasks'].includes(name)) {
+    if (['budget', 'vendors', 'timeline', 'tasks', 'guests'].includes(name)) {
       if (!user) throw new Error('Sign in to add this item.');
       const currentUser = getAuthClient()?.currentUser;
       if (!currentUser || currentUser.uid !== user.uid) throw new Error('Your session is no longer available. Please sign in again.');
       const token = await currentUser.getIdToken();
-      const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/planning-items`, {
+      const isGuest = name === 'guests';
+      const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/${isGuest ? 'guests' : 'planning-items'}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ collection: name, data }),
+        body: JSON.stringify(isGuest ? data : { collection: name, data }),
       });
       const result = await response.json() as { id?: string; message?: string };
       if (!response.ok || !result.id) {
@@ -65,10 +66,23 @@ function useCollection<T extends Record<string, any>>(eventId: string, name: str
   }, [eventId, name]);
 
   const deleteItem = useCallback(async (id: string) => {
+    if (name === 'guests') {
+      if (!user) throw new Error('Sign in to remove this guest.');
+      const currentUser = getAuthClient()?.currentUser;
+      if (!currentUser || currentUser.uid !== user.uid) throw new Error('Your session is no longer available. Please sign in again.');
+      const token = await currentUser.getIdToken();
+      const response = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/guests?guestId=${encodeURIComponent(id)}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+      );
+      const result = await response.json() as { message?: string };
+      if (!response.ok) throw new Error(result.message ?? 'Could not remove this guest.');
+      return;
+    }
     const db = getFirestoreClient();
     if (!db) throw new Error('Firestore is not configured.');
     await deleteDoc(doc(db, 'events', eventId, name, id));
-  }, [eventId, name]);
+  }, [eventId, name, user]);
 
   return { items, loading, addItem, updateItem, deleteItem };
 }

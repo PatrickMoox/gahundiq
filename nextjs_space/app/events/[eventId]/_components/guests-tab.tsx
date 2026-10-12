@@ -41,10 +41,10 @@ function generateInviteToken(): string {
   return Array.from({ length: 40 }, () => chars[randomInt(chars.length)]).join('');
 }
 
-export function GuestsTab({ eventId, event }: { eventId: string; event: EventData }) {
+export function GuestsTab({ eventId, event, guestLimit }: { eventId: string; event: EventData; guestLimit?: number }) {
   const { guests, loading, addGuest, updateGuest, deleteGuest } = useGuests(eventId);
   const { invites } = useEventInvites(eventId);
-  const limits = getEventLimits(event);
+  const limits = { ...getEventLimits(event), guests: guestLimit ?? getEventLimits(event).guests };
   const [search, setSearch] = useState('');
   const [rsvpFilter, setRsvpFilter] = useState<'all' | RsvpStatus>('all');
   const [dietaryFilter, setDietaryFilter] = useState<'all' | DietaryPref>('all');

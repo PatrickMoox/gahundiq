@@ -21,6 +21,8 @@ import { GiftsTab } from './gifts-tab';
 import { GuestsTab } from './guests-tab';
 import { PlanFeatureGate } from '@/components/plan-feature-gate';
 import { useGuests, useTimeline, useEventInvites } from '@/lib/hooks/use-firestore-data';
+import { useSubscription } from '@/lib/hooks/use-subscription';
+import { getGuestLimit, getInvitationLimit } from '@/lib/plan-entitlements';
 import { rsvpCounts } from '@/lib/rsvp';
 import { isSectionShared, type ShareableSection } from '@/lib/collab';
 import { InvitationUploadModal } from '@/components/invitation-upload-modal';
@@ -52,6 +54,10 @@ export function EventHubClient({ eventId }: { eventId: string }) {
   // the host opened them, and gifts are NEVER shared (rules make gift reads
   // host-only). The rules are the enforcement — this mirrors lib/collab.ts.
   const isHost = Boolean(user && event && event.hostId === user.uid);
+  const { subscription } = useSubscription(isHost ? user?.uid : null);
+  const guestLimit = event ? getGuestLimit(event, isHost ? subscription : null) : undefined;
+  const invitationLimit = event ? getInvitationLimit(event, isHost ? subscription : null) : undefined;
+  const broadcastRecipientsUsed = (event?.invitationBroadcasts ?? []).reduce((total, record) => total + (Number(record.guestCount) || 0), 0);
   const canSeeSection = (section: ShareableSection): boolean =>
     isHost || isSectionShared(event?.collaboratorAccess, user?.uid, section);
 
@@ -175,7 +181,7 @@ export function EventHubClient({ eventId }: { eventId: string }) {
             {canSeeSection('vendors') && (
               <TabsContent value="vendors"><VendorsTab eventId={eventId} event={event} timeline={timelineItems} /></TabsContent>
             )}
-            <TabsContent value="guests"><GuestsTab eventId={eventId} event={event} /></TabsContent>
+            <TabsContent value="guests"><GuestsTab eventId={eventId} event={event} guestLimit={guestLimit} /></TabsContent>
             <TabsContent value="seating"><PlanFeatureGate event={event} feature="seating"><SeatingTab eventId={eventId} /></PlanFeatureGate></TabsContent>
             <TabsContent value="tasks"><TasksTab eventId={eventId} event={event} /></TabsContent>
             {canSeeSection('budget') && (
@@ -216,6 +222,7 @@ export function EventHubClient({ eventId }: { eventId: string }) {
         guestCount={event?.guestCount ?? 0}
         confirmedGuests={rsvp.confirmed}
         pendingGuests={rsvp.pending}
+        remainingRecipients={Math.max(0, (invitationLimit ?? 0) - broadcastRecipientsUsed)}
       />
 
       <SiteFooter />

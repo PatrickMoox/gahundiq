@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, deleteField, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 import { useAdminDirectory, type DirectoryUser } from '@/lib/hooks/use-subscription';
 import { getFirestoreClient } from '@/lib/firebase';
@@ -25,6 +25,8 @@ interface SubscriptionDraft {
   billingCycle: 'monthly' | 'per_event';
   price: number;
   maxEvents: number;
+  maxGuests: number;
+  maxInvites: number;
   periodEnd: string;
 }
 
@@ -37,9 +39,13 @@ interface AdminEventRow {
   guestCount: number;
   date: Date | null;
   venue: string;
+  guestCapacityOverride?: number;
+  invitationCapacityOverride?: number;
 }
 
 const DEFAULT_MAX_EVENTS: Record<Tier, number> = { free: 1, premium: 10 };
+const DEFAULT_MAX_GUESTS: Record<Tier, number> = { free: 25, premium: 250 };
+const DEFAULT_MAX_INVITES: Record<Tier, number> = { free: 25, premium: 500 };
 
 interface ReviewRow extends PublicReview {
   id: string;
@@ -64,6 +70,7 @@ export function AdminClient() {
   const [userEvents, setUserEvents] = useState<Record<string, AdminEventRow[]>>({});
   const [eventsLoadingId, setEventsLoadingId] = useState<string | null>(null);
   const [allEvents, setAllEvents] = useState<AdminEventRow[]>([]);
+  const [eventCapacityDrafts, setEventCapacityDrafts] = useState<Record<string, { guests: string; invites: string }>>({});
   const [platform, setPlatform] = useState({ ceremonies: 0, owners: 0, premiumEvents: 0 });
   const [view, setView] = useState<'users' | 'events' | 'reviews'>('users');
   const [adminUids, setAdminUids] = useState<Set<string>>(new Set());
@@ -101,12 +108,18 @@ export function AdminClient() {
           title: data.title ?? 'Untitled event',
           tier: (data.tier ?? 'free') as Tier,
           guestCount: Number(data.guestCount) || 0,
+          guestCapacityOverride: typeof data.guestCapacityOverride === 'number' ? data.guestCapacityOverride : undefined,
+          invitationCapacityOverride: typeof data.invitationCapacityOverride === 'number' ? data.invitationCapacityOverride : undefined,
           date: raw && !Number.isNaN(raw.getTime()) ? raw : null,
           venue: data.venue ?? '',
         };
       });
       rows.sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0));
       setAllEvents(rows);
+      setEventCapacityDrafts(Object.fromEntries(rows.map((event) => [event.id, {
+        guests: event.guestCapacityOverride?.toString() ?? '',
+        invites: event.invitationCapacityOverride?.toString() ?? '',
+      }])));
       setAdminUids(new Set(adminSnap.docs.map((d) => d.id)));
       setPlatform({
         ceremonies: rows.length,
@@ -277,6 +290,45 @@ export function AdminClient() {
     }
   };
 
+  const saveEventCapacities = async (event: AdminEventRow) => {
+    const db = getFirestoreClient();
+    const draft = eventCapacityDrafts[event.id];
+    if (!db || !draft) return;
+    const parseLimit = (value: string, label: string) => {
+      if (!value.trim()) return null;
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100000) {
+        throw new Error(`${label} must be a whole number from 1 to 100,000, or blank to use the account default.`);
+      }
+      return parsed;
+    };
+    let guestCapacity: number | null;
+    let inviteCapacity: number | null;
+    try {
+      guestCapacity = parseLimit(draft.guests, 'Guest capacity');
+      inviteCapacity = parseLimit(draft.invites, 'Invitation capacity');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Capacity values are invalid.');
+      return;
+    }
+    setBusyId(event.id);
+    try {
+      await updateDoc(doc(db, 'events', event.id), {
+        guestCapacityOverride: guestCapacity ?? deleteField(),
+        invitationCapacityOverride: inviteCapacity ?? deleteField(),
+        updatedAt: serverTimestamp(),
+      });
+      setAllEvents((current) => current.map((item) => item.id === event.id
+        ? { ...item, guestCapacityOverride: guestCapacity ?? undefined, invitationCapacityOverride: inviteCapacity ?? undefined }
+        : item));
+      toast.success(`Capacity overrides saved for "${event.title}".`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save ceremony capacities.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const deleteEventGlobal = async (ev: AdminEventRow) => {
     const db = getFirestoreClient();
     if (!db) return;
@@ -332,6 +384,8 @@ export function AdminClient() {
         billingCycle: u.subscription?.billingCycle ?? 'per_event',
         price: u.subscription?.price ?? 0,
         maxEvents: u.subscription?.maxEvents ?? DEFAULT_MAX_EVENTS[u.subscription?.tier ?? 'free'],
+        maxGuests: u.subscription?.maxGuests ?? DEFAULT_MAX_GUESTS[u.subscription?.tier ?? 'free'],
+        maxInvites: u.subscription?.maxInvites ?? DEFAULT_MAX_INVITES[u.subscription?.tier ?? 'free'],
         periodEnd: toInputDate(u.subscription?.currentPeriodEnd),
       },
     });
@@ -355,6 +409,8 @@ export function AdminClient() {
         billingCycle: draft.billingCycle,
         price: Number(draft.price) || 0,
         maxEvents: Number(draft.maxEvents) || DEFAULT_MAX_EVENTS[draft.tier],
+        maxGuests: Number(draft.maxGuests) || DEFAULT_MAX_GUESTS[draft.tier],
+        maxInvites: Number(draft.maxInvites) || DEFAULT_MAX_INVITES[draft.tier],
         activeEventCount: eventsSnap.size,
         updatedAt: serverTimestamp(),
         updatedBy: `admin:${user.uid}`,
@@ -523,7 +579,12 @@ export function AdminClient() {
                     <div className="border-t border-border/50 p-4">
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <div><Label>Tier</Label>
-                          <Select value={draft.tier} onValueChange={(v) => updateDraft(u.id, { tier: v as Tier, maxEvents: v === 'premium' ? DEFAULT_MAX_EVENTS.premium : DEFAULT_MAX_EVENTS.free })}>
+                          <Select value={draft.tier} onValueChange={(v) => updateDraft(u.id, {
+                            tier: v as Tier,
+                            maxEvents: v === 'premium' ? DEFAULT_MAX_EVENTS.premium : DEFAULT_MAX_EVENTS.free,
+                            maxGuests: v === 'premium' ? DEFAULT_MAX_GUESTS.premium : DEFAULT_MAX_GUESTS.free,
+                            maxInvites: v === 'premium' ? DEFAULT_MAX_INVITES.premium : DEFAULT_MAX_INVITES.free,
+                          })}>
                             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="free">Free</SelectItem>
@@ -556,6 +617,12 @@ export function AdminClient() {
                         </div>
                         <div><Label htmlFor={`max-events-${u.id}`}>Max events</Label>
                           <Input id={`max-events-${u.id}`} type="number" min="1" value={draft.maxEvents} onChange={(e: any) => updateDraft(u.id, { maxEvents: Number(e?.target?.value ?? 1) })} className="mt-1" />
+                        </div>
+                        <div><Label htmlFor={`max-guests-${u.id}`}>Guest capacity per event</Label>
+                          <Input id={`max-guests-${u.id}`} type="number" min="1" max="100000" value={draft.maxGuests} onChange={(e: any) => updateDraft(u.id, { maxGuests: Number(e?.target?.value ?? 1) })} className="mt-1" />
+                        </div>
+                        <div><Label htmlFor={`max-invites-${u.id}`}>Broadcast recipients per event</Label>
+                          <Input id={`max-invites-${u.id}`} type="number" min="1" max="100000" value={draft.maxInvites} onChange={(e: any) => updateDraft(u.id, { maxInvites: Number(e?.target?.value ?? 1) })} className="mt-1" />
                         </div>
                         <div><Label htmlFor={`period-${u.id}`}>Period ends (blank = open-ended)</Label>
                           <Input id={`period-${u.id}`} type="date" value={draft.periodEnd} onChange={(e: any) => updateDraft(u.id, { periodEnd: e?.target?.value ?? '' })} className="mt-1" />
@@ -670,7 +737,7 @@ export function AdminClient() {
                 return `${e.title} ${hostEmailOf(e.hostId)} ${e.venue}`.toLowerCase().includes(q);
               })
               .map((ev) => (
-              <div key={ev.id} className="flex flex-col gap-2 rounded-lg border border-border/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div key={ev.id} className="flex flex-col gap-3 rounded-lg border border-border/50 p-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate text-sm font-medium">{ev.title}</p>
@@ -681,23 +748,45 @@ export function AdminClient() {
                     {ev.venue ? ` · ${ev.venue}` : ''} · {ev.guestCount} guests
                   </p>
                 </div>
-                <div className="flex flex-shrink-0 items-center gap-2">
-                  <select
-                    value={ev.tier}
-                    onChange={(e: any) => setEventTierGlobal(ev.id, (e?.target?.value ?? 'free') as Tier)}
-                    disabled={busyId === ev.id}
-                    className="h-8 rounded-md border border-border bg-card px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-                    aria-label={`Tier for ${ev.title}`}
-                  >
-                    <option value="free">free</option>
-                    <option value="premium">premium</option>
-                  </select>
-                  <Button size="sm" variant="outline" className="h-8 gap-1.5 px-2 text-xs" onClick={() => router.push(`/events/${ev.id}`)}>
-                    <ExternalLink className="h-3 w-3" /> Open
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-8 gap-1.5 border-rose-500/30 px-2 text-xs text-rose-600 hover:bg-rose-500/10" onClick={() => deleteEventGlobal(ev)} disabled={busyId === ev.id}>
-                    <Trash2 className="h-3 w-3" /> Delete
-                  </Button>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">Capacity overrides for this ceremony (blank uses account default)</p>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="text-xs text-muted-foreground">
+                        Guest limit
+                        <Input type="number" min="1" max="100000" value={eventCapacityDrafts[ev.id]?.guests ?? ''} placeholder="Plan default"
+                          onChange={(e: any) => setEventCapacityDrafts((current) => ({ ...current, [ev.id]: { ...current[ev.id], guests: e?.target?.value ?? '' } }))}
+                          className="mt-1 h-8 w-32" />
+                      </label>
+                      <label className="text-xs text-muted-foreground">
+                        Broadcast recipients
+                        <Input type="number" min="1" max="100000" value={eventCapacityDrafts[ev.id]?.invites ?? ''} placeholder="Plan default"
+                          onChange={(e: any) => setEventCapacityDrafts((current) => ({ ...current, [ev.id]: { ...current[ev.id], invites: e?.target?.value ?? '' } }))}
+                          className="mt-1 h-8 w-40" />
+                      </label>
+                      <Button size="sm" variant="outline" className="self-end" onClick={() => saveEventCapacities(ev)} disabled={busyId === ev.id}>
+                        {busyId === ev.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save limits'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    <select
+                      value={ev.tier}
+                      onChange={(e: any) => setEventTierGlobal(ev.id, (e?.target?.value ?? 'free') as Tier)}
+                      disabled={busyId === ev.id}
+                      className="h-8 rounded-md border border-border bg-card px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+                      aria-label={`Tier for ${ev.title}`}
+                    >
+                      <option value="free">free</option>
+                      <option value="premium">premium</option>
+                    </select>
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 px-2 text-xs" onClick={() => router.push(`/events/${ev.id}`)}>
+                      <ExternalLink className="h-3 w-3" /> Open
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 border-rose-500/30 px-2 text-xs text-rose-600 hover:bg-rose-500/10" onClick={() => deleteEventGlobal(ev)} disabled={busyId === ev.id}>
+                      <Trash2 className="h-3 w-3" /> Delete
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}

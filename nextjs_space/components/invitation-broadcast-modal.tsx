@@ -2,8 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { arrayUnion, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { getFirestoreClient } from '@/lib/firebase';
+import { getAuthClient } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Send, Mail, Copy, CheckCircle2, Loader2, X } from 'lucide-react';
@@ -19,6 +18,7 @@ interface InvitationBroadcastModalProps {
   guestCount: number;
   confirmedGuests: number;
   pendingGuests: number;
+  remainingRecipients: number;
 }
 
 export function InvitationBroadcastModal({
@@ -31,6 +31,7 @@ export function InvitationBroadcastModal({
   guestCount,
   confirmedGuests,
   pendingGuests,
+  remainingRecipients,
 }: InvitationBroadcastModalProps) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -42,37 +43,36 @@ export function InvitationBroadcastModal({
   // (`/invite/{eventId}/{token}`) — so the old `${origin}/invite/${eventId}`
   // value was a dead link that 404'd for every guest it was sent to.
   const shareLink = invitationUrl?.trim() || '';
+  const exceedsCapacity = pendingGuests > remainingRecipients;
 
   const handleBroadcast = async () => {
     setSending(true);
-    const db = getFirestoreClient();
-    if (!db) {
+    const user = getAuthClient()?.currentUser;
+    if (!user || user.uid !== hostId) {
+      toast.error('Sign in as the event host to record a broadcast.');
       setSending(false);
       return;
     }
 
     try {
-      await updateDoc(doc(db, 'events', eventId), {
-        // APPEND (never replace) — this keeps the full broadcast history on the
-        // event; replacing the array would silently erase previous broadcasts.
-        invitationBroadcasts: arrayUnion({
-          sentAt: serverTimestamp(),
-          sentBy: hostId,
-          guestCount: pendingGuests,
-          // No email backend is wired yet — this records a LINK broadcast. The
-          // reference is the real shareable invitation path (never a fabricated
-          // "sim_" id).
-          method: 'link',
+      const token = await user.getIdToken();
+      const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/invitation-broadcast`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipientCount: pendingGuests,
           reference: shareLink || `/events/${eventId}`,
         }),
-        updatedAt: serverTimestamp(),
       });
+      const result = await response.json() as { message?: string };
+      if (!response.ok) throw new Error(result.message ?? 'Could not record the broadcast.');
       setSent(true);
       toast.success(`Broadcast recorded for ${pendingGuests} pending guests.`);
-    } catch (err: any) {
-      toast.error(`Broadcast failed: ${err?.message ?? 'Unknown error'}`);
+    } catch (error) {
+      toast.error(`Broadcast failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSending(false);
     }
-    setSending(false);
   };
 
   const handleCopyLink = async () => {
@@ -126,7 +126,7 @@ export function InvitationBroadcastModal({
                 <div className="space-y-2">
                   <Button
                     onClick={handleBroadcast}
-                    disabled={sending || pendingGuests === 0}
+                    disabled={sending || pendingGuests === 0 || exceedsCapacity}
                     className="w-full gap-2"
                   >
                     {sending ? (
@@ -153,9 +153,12 @@ export function InvitationBroadcastModal({
                     ? 'Upload an invitation (or add an invitation link) first — guest invites are personal, so there is nothing generic to share yet.'
                     : pendingGuests === 0
                       ? 'All guests have responded — nothing to broadcast.'
+                      : exceedsCapacity
+                        ? `This broadcast needs ${pendingGuests} recipients, but only ${remainingRecipients} remain. Add invitation capacity from Pricing or reduce the pending guest count.`
                       : 'This records the broadcast — your guests RSVP through the personal invite links you send.'
                   }
                 </p>
+                <p className="mt-1 text-xs text-muted-foreground">{remainingRecipients} broadcast recipients remain for this event.</p>
               </div>
 
               <div className="rounded-lg bg-muted/50 p-3 text-sm">

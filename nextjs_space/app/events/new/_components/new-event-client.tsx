@@ -10,9 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { addDoc, collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
-import { getFirestoreClient } from '@/lib/firebase';
-import { FREE_LIMITS, PAID_LIMITS, isSubscriptionActive } from '@/lib/plan-entitlements';
+import { doc, setDoc } from 'firebase/firestore';
+import { getAuthClient, getFirestoreClient } from '@/lib/firebase';
+import { getGuestLimit, isSubscriptionActive } from '@/lib/plan-entitlements';
 import { detectCurrency, CURRENCIES, DEFAULT_CURRENCY } from '@/lib/currency';
 import type { CurrencyCode } from '@/types/firestore';
 import { useSubscription } from '@/lib/hooks/use-subscription';
@@ -60,40 +60,40 @@ export function NewEventClient() {
     const db = getFirestoreClient();
     if (!db || !user) { toast.error('Firebase is not connected. Please try again.'); return; }
     try {
-      const maxEvents = premiumAccount ? (subscription?.maxEvents || PAID_LIMITS.activeCeremonies) : FREE_LIMITS.activeCeremonies;
-      const guestLimit = premiumAccount ? PAID_LIMITS.guests : FREE_LIMITS.guests;
+      const guestLimit = getGuestLimit({ tier: premiumAccount ? 'premium' : 'free' }, subscription);
       const planName = premiumAccount ? 'Premium' : 'Free';
-      const existingEvents = await getDocs(query(collection(db, 'events'), where('hostId', '==', user.uid)));
-      if (existingEvents.size >= maxEvents) {
-        toast.error(`The ${planName} plan includes ${maxEvents} active ${maxEvents === 1 ? 'ceremony' : 'ceremonies'}.${premiumAccount ? '' : ' Upgrade to create more.'}`);
-        return;
-      }
       const requestedGuests = Math.max(1, Number(guestCount) || 1);
       if (requestedGuests > guestLimit) {
         toast.error(`The ${planName} plan supports up to ${guestLimit} guests.${premiumAccount ? '' : ' Upgrade for more capacity.'}`);
         return;
       }
-      const created = await addDoc(collection(db, 'events'), {
-        hostId: user.uid,
-        collaboratorIds: [],
-        title: title.trim(),
-        eventType,
-        date: date ? new Date(`${date}T12:00:00`) : null,
-        venue: venue.trim(),
-        guestCount: requestedGuests,
-        tier: premiumAccount ? 'premium' : 'free',
-        currency,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+      const currentUser = getAuthClient()?.currentUser;
+      if (!currentUser || currentUser.uid !== user.uid) {
+        throw new Error('Your session is no longer available. Please sign in again.');
+      }
+      const token = await currentUser.getIdToken();
+      const response = await fetch('/api/events', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          eventType,
+          date: date ? new Date(`${date}T12:00:00`).toISOString() : null,
+          venue: venue.trim(),
+          guestCount: requestedGuests,
+          currency,
+        }),
       });
+      const result = await response.json() as { id?: string; message?: string };
+      if (!response.ok || !result.id) throw new Error(result.message ?? 'Could not create the ceremony.');
 
       // Auto-create the public gift page so /gift/{eventId} works immediately.
       // Non-fatal: the event itself is created and usable — the gift page can
       // be recreated later (e.g. after granting premium), so never block the
       // user from entering their new event because of it.
       try {
-        await setDoc(doc(db, 'publicGiftPages', created.id), {
-          eventId: created.id,
+        await setDoc(doc(db, 'publicGiftPages', result.id), {
+          eventId: result.id,
           hostId: user.uid,
           title: title.trim(),
           eventType,
@@ -108,7 +108,7 @@ export function NewEventClient() {
       }
 
       toast.success('Event created successfully!');
-      router.push(`/events/${created.id}`);
+      router.push(`/events/${result.id}`);
     } catch (error: any) {
       toast.error(error?.message ?? 'Could not create the event');
     }

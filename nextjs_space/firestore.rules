@@ -125,6 +125,15 @@ service cloud.firestore {
       return eventDoc(eventId).data.tier == 'premium';
     }
 
+    function eventGuestLimit(data) {
+      let subscriptionPath = /databases/$(database)/documents/subscriptions/$(data.hostId);
+      return data.get('guestCapacityOverride', null) is number
+        ? data.guestCapacityOverride
+        : (exists(subscriptionPath)
+        ? get(subscriptionPath).data.get('maxGuests', data.tier == 'premium' ? 250 : 25)
+        : (data.tier == 'premium' ? 250 : 25));
+    }
+
     // True when the signed-in user holds a premium entitlement the rules can
     // verify directly from the admin-managed `subscriptions/{uid}` doc:
     // tier premium, status not canceled/past_due, and currentPeriodEnd either
@@ -143,14 +152,16 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/subscriptions/$(request.auth.uid)).data.get('currentPeriodEnd', null) > request.time));
     }
 
-    // Plan validation at event CREATE: 'free' is capped at 25 guests;
+    // Plan validation at event CREATE: guest capacity comes from the
+    // host subscription override or the tier default;
     // 'premium' requires a verified premium subscription (admins bypass via
     // the isAdmin() branch in the create rule).
     function validEventPlan(data) {
-      return (data.tier == 'premium' && isSubscribed())
-        || (data.tier == 'free'
-          && data.guestCount is number
-          && data.guestCount <= 25);
+      return !('guestCapacityOverride' in data)
+        && !('invitationCapacityOverride' in data)
+        && data.guestCount is number
+        && data.guestCount <= eventGuestLimit(data)
+        && (data.tier == 'premium' ? isSubscribed() : data.tier == 'free');
     }
 
     // Plan validation at event UPDATE: hosts cannot change tier anyway (it is
@@ -159,9 +170,8 @@ service cloud.firestore {
     // subscription later lapses — downgrade is an admin action.
     function validEventPlanForUpdate() {
       return request.resource.data.tier == resource.data.tier
-        && (request.resource.data.tier != 'free'
-          || (request.resource.data.guestCount is number
-            && request.resource.data.guestCount <= 25));
+        && request.resource.data.guestCount is number
+        && request.resource.data.guestCount <= eventGuestLimit(resource.data);
     }
 
     // User profile data is private to the authenticated user.
@@ -202,26 +212,13 @@ service cloud.firestore {
       allow delete: if isUser(userId) || isAdmin();
     }
 
-    // Billing state is admin-managed (control center + payment webhooks).
-    // Exception: the owner may self-serve GROW their ceremony quota (add-on
-    // purchase) - only the quota fields, bounded to sane maximums, and never
-    // decreasing. Tier, price, Stripe ids etc. remain admin-only.
+    // Billing state and add-on entitlements are admin-managed or written by
+    // trusted payment webhooks only. Clients cannot grant themselves capacity.
     match /subscriptions/{userId} {
       allow read: if isUser(userId) || isAdmin();
       allow create: if isAdmin();
       allow delete: if isAdmin();
-      allow update: if isAdmin()
-        || (isUser(userId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-            ['maxEvents', 'extraCeremonies', 'addonHistory', 'updatedAt'])
-          && request.resource.data.maxEvents is number
-          && request.resource.data.extraCeremonies is number
-          && request.resource.data.maxEvents <= 100
-          && request.resource.data.extraCeremonies <= 100
-          && request.resource.data.maxEvents >= resource.data.get('maxEvents', 0)
-          && request.resource.data.extraCeremonies >= resource.data.get('extraCeremonies', 0)
-          && request.resource.data.addonHistory is list
-          && request.resource.data.addonHistory.size() <= 50);
+      allow update: if isAdmin();
     }
 
     match /events/{eventId} {
@@ -234,11 +231,9 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (signedIn() && resource.data.hostId == request.auth.uid)
         || (signedIn() && request.auth.uid in resource.data.get('collaboratorIds', []));
-      allow create: if isAdmin() || (signedIn()
-        && request.resource.data.hostId == request.auth.uid
-        && validCollaborators(request.resource.data)
-        && validEventPlan(request.resource.data)
-        && validOnlineInvitation(request.resource.data));
+      // Ceremony creation is performed by the authenticated server endpoint,
+      // which enforces the owner's active-ceremony allowance atomically.
+      allow create: if isAdmin();
       // Admins bypass all host restrictions for support (any fields, any plan).
       allow update: if isAdmin() || (isEventHost(eventId)
         && request.resource.data.hostId == resource.data.hostId
@@ -248,7 +243,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'title', 'eventType', 'date', 'venue', 'coverImageUrl',
           'guestCount', 'updatedAt', 'collaboratorIds', 'collaboratorNames', 'collaboratorAccess', 'currency',
-          'invitationUrl', 'invitationName', 'invitationUploadedAt', 'invitationBroadcasts',
+          'invitationUrl', 'invitationName', 'invitationUploadedAt',
           'onlineInvitationUrl', 'onlineInvitationLabel'
         ]))
         // Collaborator SELF-JOIN: an invited user may add ONLY themselves
@@ -311,7 +306,9 @@ service cloud.firestore {
       }
 
       match /guests/{recordId} {
-        allow read, write: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
+        allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
+        allow create: if isAdmin();
+        allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
       }
 
       // Digital invitations: token-keyed, guest-facing. The 40-char token IS
