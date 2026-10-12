@@ -91,9 +91,8 @@ export function SeatingTab({ eventId }: { eventId: string }) {
   const [assignSeat, setAssignSeat] = useState<{ tableId: string; seatId: string } | null>(null);
   const [dragging, setDragging] = useState<{ tableId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
 
-  // The floor plan clips its overflow, so table coordinates must stay inside the
-  // element's real pixel size — which is only ~340px wide on a phone, not the
-  // ~900px the old hardcoded spawn range assumed.
+  // The viewport is scrollable; the floor-plan stage can grow beyond it to fit
+  // tables while keeping their saved coordinates unchanged.
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const floorStageRef = useRef<HTMLDivElement | null>(null);
   const canvasBounds = useCallback((): { width: number; height: number } => {
@@ -108,6 +107,10 @@ export function SeatingTab({ eventId }: { eventId: string }) {
     setCanvasWidth(canvas.clientWidth);
     return () => observer.disconnect();
   }, []);
+  const floorPlanWidth = useMemo(() => Math.max(
+    canvasWidth,
+    ...(chart?.tables ?? []).map((table) => table.x + tableSize(table.type).w + TABLE_GAP),
+  ), [chart?.tables, canvasWidth]);
   const floorPlanHeight = useMemo(() => Math.max(
     500,
     ...(chart?.tables ?? []).map((table) => table.y + tableSize(table.type).h + TABLE_GAP),
@@ -142,7 +145,7 @@ export function SeatingTab({ eventId }: { eventId: string }) {
     const seats: Seat[] = Array.from({ length: cap }, (_: any, i: number) => ({
       id: uuidv4(), tableId: uuidv4(), position: i + 1,
     }));
-    const { w, h } = tableSize(newTableType);
+    const { w } = tableSize(newTableType);
     const bounds = canvasBounds();
     const { x, y } = findTablePosition(chart?.tables ?? [], newTableType, bounds.width);
     const tbl: TableData = {
@@ -207,20 +210,18 @@ export function SeatingTab({ eventId }: { eventId: string }) {
     if (!dragging) return;
     const dx = (e.clientX - dragging.startX) / canvasZoom;
     const dy = (e.clientY - dragging.startY) / canvasZoom;
-    const bounds = canvasBounds();
     const tables = (chart?.tables ?? []).map((t: TableData) => {
       if (t?.id !== dragging.tableId) return t;
-      const { w, h } = tableSize(t?.type);
       const rawX = snapToGrid(dragging.origX + dx, snapToGridEnabled);
       const rawY = snapToGrid(dragging.origY + dy, snapToGridEnabled);
       return {
         ...t,
-        x: clampToCanvas(rawX, w, canvasWidth || bounds.width),
-        y: clampToCanvas(rawY, h, Math.max(floorPlanHeight, rawY + h + TABLE_GAP)),
+        x: Math.max(TABLE_GAP, rawX),
+        y: Math.max(TABLE_GAP, rawY),
       };
     });
     setChart({ ...chart, tables, updatedAt: new Date() });
-  }, [dragging, chart, setChart, canvasBounds, canvasZoom, canvasWidth, snapToGridEnabled, floorPlanHeight]);
+  }, [dragging, chart, setChart, canvasZoom, snapToGridEnabled]);
 
   const handlePointerUp = useCallback(() => {
     // Drag moves update local state for smoothness; persist the final positions
@@ -243,9 +244,9 @@ export function SeatingTab({ eventId }: { eventId: string }) {
       const stage = floorStageRef.current;
       if (!stage) return;
       const canvas = await html2canvas(stage, {
-        width: canvasWidth,
+        width: floorPlanWidth,
         height: floorPlanHeight,
-        windowWidth: canvasWidth,
+        windowWidth: floorPlanWidth,
         windowHeight: floorPlanHeight,
         scale: 1 / canvasZoom,
       });
@@ -318,7 +319,7 @@ export function SeatingTab({ eventId }: { eventId: string }) {
           <div
             className="relative"
             style={{
-              width: canvasWidth ? canvasWidth * canvasZoom : '100%',
+              width: floorPlanWidth ? floorPlanWidth * canvasZoom : '100%',
               height: floorPlanHeight * canvasZoom,
             }}
           >
@@ -326,7 +327,7 @@ export function SeatingTab({ eventId }: { eventId: string }) {
               ref={floorStageRef}
               className="absolute left-0 top-0"
               style={{
-                width: canvasWidth || '100%',
+                width: floorPlanWidth || '100%',
                 height: floorPlanHeight,
                 transform: `scale(${canvasZoom})`,
                 transformOrigin: 'top left',

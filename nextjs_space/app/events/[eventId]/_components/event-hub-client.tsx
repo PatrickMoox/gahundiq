@@ -171,15 +171,15 @@ export function EventHubClient({ eventId }: { eventId: string }) {
               )}
             </TabsList>
 
-            <TabsContent value="timeline"><TimelineTab eventId={eventId} /></TabsContent>
+            <TabsContent value="timeline"><TimelineTab eventId={eventId} event={event} /></TabsContent>
             {canSeeSection('vendors') && (
               <TabsContent value="vendors"><VendorsTab eventId={eventId} event={event} timeline={timelineItems} /></TabsContent>
             )}
             <TabsContent value="guests"><GuestsTab eventId={eventId} event={event} /></TabsContent>
             <TabsContent value="seating"><PlanFeatureGate event={event} feature="seating"><SeatingTab eventId={eventId} /></PlanFeatureGate></TabsContent>
-            <TabsContent value="tasks"><TasksTab eventId={eventId} /></TabsContent>
+            <TabsContent value="tasks"><TasksTab eventId={eventId} event={event} /></TabsContent>
             {canSeeSection('budget') && (
-              <TabsContent value="budget"><PlanFeatureGate event={event} feature="budget"><BudgetTab eventId={eventId} event={event} /></PlanFeatureGate></TabsContent>
+              <TabsContent value="budget"><BudgetTab eventId={eventId} event={event} /></TabsContent>
             )}
             {isHost && (
               <TabsContent value="gifts"><PlanFeatureGate event={event} feature="gifts"><GiftsTab eventId={eventId} event={event} /></PlanFeatureGate></TabsContent>

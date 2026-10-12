@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
-import { getFirestoreClient } from '@/lib/firebase';
+import { getAuthClient, getFirestoreClient } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import type { EventData, TimelineItem, Vendor, SeatingChart, Task, BudgetItem, CashGift, GuestData, InviteData } from '@/types/firestore';
 
@@ -33,11 +33,30 @@ function useCollection<T extends Record<string, any>>(eventId: string, name: str
   }, [eventId, name, user]);
 
   const addItem = useCallback(async (data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>) => {
+    if (['budget', 'vendors', 'timeline', 'tasks'].includes(name)) {
+      if (!user) throw new Error('Sign in to add this item.');
+      const currentUser = getAuthClient()?.currentUser;
+      if (!currentUser || currentUser.uid !== user.uid) throw new Error('Your session is no longer available. Please sign in again.');
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/planning-items`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ collection: name, data }),
+      });
+      const result = await response.json() as { id?: string; message?: string };
+      if (!response.ok || !result.id) {
+        throw new Error(result.message ?? 'Could not add this item.');
+      }
+      return { ...data, id: result.id } as unknown as T;
+    }
     const db = getFirestoreClient();
     if (!db) throw new Error('Firestore is not configured.');
     const created = await addDoc(collection(db, 'events', eventId, name), { ...data, createdAt: new Date(), updatedAt: new Date() });
     return { ...data, id: created.id } as unknown as T;
-  }, [eventId, name]);
+  }, [eventId, name, user]);
 
   const updateItem = useCallback(async (id: string, data: Partial<T>) => {
     const db = getFirestoreClient();

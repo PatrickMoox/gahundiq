@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTimeline } from '@/lib/hooks/use-firestore-data';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { TimelineItem } from '@/types/firestore';
+import type { EventData, TimelineItem } from '@/types/firestore';
+import { FREE_LIMITS, getPlanningItemLimit } from '@/lib/plan-entitlements';
 import { toast } from 'sonner';
 import { Plus, Clock, Trash2, Edit2, GripVertical } from 'lucide-react';
 
@@ -25,14 +27,17 @@ const emptyItem: Omit<TimelineItem, 'id'> = {
   title: '', description: '', assignedTo: '', color: '#4F46E5', status: 'upcoming', order: 0,
 };
 
-export function TimelineTab({ eventId }: { eventId: string }) {
-  const { items, addItem, updateItem, deleteItem } = useTimeline(eventId);
+export function TimelineTab({ eventId, event }: { eventId: string; event: EventData }) {
+  const { items, loading, addItem, updateItem, deleteItem } = useTimeline(eventId);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<TimelineItem, 'id'>>({ ...emptyItem, eventId });
   const [filterTrack, setFilterTrack] = useState<string>('all');
+  const itemLimit = getPlanningItemLimit(event, 'timeline');
+  const limitReached = itemLimit !== null && (items?.length ?? 0) >= itemLimit;
 
   const openAdd = () => {
+    if (loading || limitReached) return;
     setEditingId(null);
     setForm({ ...emptyItem, eventId, order: (items?.length ?? 0) + 1 });
     setShowForm(true);
@@ -83,7 +88,11 @@ export function TimelineTab({ eventId }: { eventId: string }) {
             </Button>
           ))}
         </div>
-        <Button onClick={openAdd} className="gap-2" size="sm"><Plus className="h-4 w-4" /> Add Item</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {itemLimit !== null && <span className="text-xs text-muted-foreground">{items?.length ?? 0} of {FREE_LIMITS.timelineItems} free-plan items</span>}
+          <Button onClick={openAdd} disabled={loading || limitReached} className="gap-2" size="sm"><Plus className="h-4 w-4" /> Add Item</Button>
+          {limitReached && <Button asChild variant="outline" size="sm"><Link href="/pricing">Upgrade for more</Link></Button>}
+        </div>
       </div>
 
       <div className="space-y-2">

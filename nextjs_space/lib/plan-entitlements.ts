@@ -6,7 +6,25 @@ export const FREE_LIMITS = {
   guests: 25,
   invites: 25,
   storageMb: 250,
+  budgetItems: 5,
+  vendors: 5,
+  timelineItems: 5,
+  tasks: 10,
 } as const;
+
+export type PlanningCollection = 'budget' | 'vendors' | 'timeline' | 'tasks';
+
+const FREE_PLANNING_LIMITS: Record<PlanningCollection, number> = {
+  budget: FREE_LIMITS.budgetItems,
+  vendors: FREE_LIMITS.vendors,
+  timeline: FREE_LIMITS.timelineItems,
+  tasks: FREE_LIMITS.tasks,
+};
+
+/** Free-plan item limits; premium events have no item-count cap. */
+export function getPlanningItemLimit(event: Pick<EventData, 'tier'>, collection: PlanningCollection): number | null {
+  return event.tier === 'premium' ? null : FREE_PLANNING_LIMITS[collection];
+}
 
 export const PAID_LIMITS = {
   activeCeremonies: 10,

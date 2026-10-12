@@ -278,11 +278,17 @@ service cloud.firestore {
       // Section access: host/admin always; collaborators gated per section —
       // money sections (budget, vendors) are private unless explicitly opened.
       match /timeline/{recordId} {
-        allow read, write: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
+        allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
+        // Creates go through the authenticated server endpoint so free-plan
+        // quotas cannot be bypassed by writing directly with the client SDK.
+        allow create: if isAdmin();
+        allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
       }
 
       match /vendors/{recordId} {
-        allow read, write: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors');
+        allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors');
+        allow create: if isAdmin();
+        allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors');
       }
 
       match /seating/{recordId} {
@@ -291,12 +297,17 @@ service cloud.firestore {
       }
 
       match /tasks/{recordId} {
-        allow read, write: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
+        allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
+        allow create: if isAdmin();
+        allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
       }
 
       match /budget/{recordId} {
-        allow read, write: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget'))
-          && (isPaidEvent(eventId) || isAdmin());
+        // Budget is available on free plans up to the item cap, so item
+        // creation is server-mediated rather than premium-only.
+        allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget');
+        allow create: if isAdmin();
+        allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget');
       }
 
       match /guests/{recordId} {

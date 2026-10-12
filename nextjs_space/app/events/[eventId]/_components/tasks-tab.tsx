@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTasks } from '@/lib/hooks/use-firestore-data';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Task, Milestone, TaskPriority, TaskStatus } from '@/types/firestore';
+import type { EventData, Task, Milestone, TaskPriority, TaskStatus } from '@/types/firestore';
+import { FREE_LIMITS, getPlanningItemLimit } from '@/lib/plan-entitlements';
 import { toast } from 'sonner';
 import { Plus, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Pencil } from 'lucide-react';
 
@@ -48,15 +50,18 @@ function isOverdue(task: Task): boolean {
   return dueDate < today;
 }
 
-export function TasksTab({ eventId }: { eventId: string }) {
-  const { tasks, addTask, updateTask, deleteTask } = useTasks(eventId);
+export function TasksTab({ eventId, event }: { eventId: string; event: EventData }) {
+  const { tasks, loading, addTask, updateTask, deleteTask } = useTasks(eventId);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [saving, setSaving] = useState(false);
+  const itemLimit = getPlanningItemLimit(event, 'tasks');
+  const limitReached = itemLimit !== null && (tasks?.length ?? 0) >= itemLimit;
 
   const openAdd = () => {
+    if (loading || limitReached) return;
     setEditingId(null);
     setForm(EMPTY_FORM);
     setShowForm(true);
@@ -78,6 +83,10 @@ export function TasksTab({ eventId }: { eventId: string }) {
 
   const handleSave = async () => {
     if (!form.title.trim()) { toast.error('Task title is required.'); return; }
+    if (!editingId && limitReached) {
+      toast.error(`Free plan allows up to ${FREE_LIMITS.tasks} tasks per event. Upgrade to add more.`);
+      return;
+    }
     setSaving(true);
     const data = {
       title: form.title.trim(),
@@ -144,7 +153,11 @@ export function TasksTab({ eventId }: { eventId: string }) {
             </Button>
           ))}
         </div>
-        <Button onClick={openAdd} size="sm" className="gap-2"><Plus className="h-4 w-4" /> Add Task</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {itemLimit !== null && <span className="text-xs text-muted-foreground">{tasks?.length ?? 0} of {FREE_LIMITS.tasks} free-plan tasks</span>}
+          <Button onClick={openAdd} disabled={loading || limitReached} size="sm" className="gap-2"><Plus className="h-4 w-4" /> Add Task</Button>
+          {limitReached && <Button asChild variant="outline" size="sm"><Link href="/pricing">Upgrade for more</Link></Button>}
+        </div>
       </div>
 
       {/* Kanban Columns */}

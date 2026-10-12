@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useVendors } from '@/lib/hooks/use-firestore-data';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { doc, setDoc } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
 import { formatMoney } from '@/lib/currency';
+import { FREE_LIMITS, getPlanningItemLimit } from '@/lib/plan-entitlements';
 
 const CATEGORY_ICONS: Record<string, any> = {
   Photographer: Camera, Videographer: Camera, DJ: Music, Caterer: UtensilsCrossed,
@@ -32,12 +34,19 @@ const emptyVendor: Omit<Vendor, 'id' | 'createdAt'> = {
 };
 
 export function VendorsTab({ eventId, event, timeline }: { eventId: string; event: EventData | null; timeline: TimelineItem[] }) {
-  const { vendors, addVendor, updateVendor, deleteVendor } = useVendors(eventId);
+  const { vendors, loading, addVendor, updateVendor, deleteVendor } = useVendors(eventId);
   const [showSheet, setShowSheet] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<Vendor, 'id' | 'createdAt'>>({ ...emptyVendor, eventId });
+  const itemLimit = event ? getPlanningItemLimit(event, 'vendors') : FREE_LIMITS.vendors;
+  const limitReached = itemLimit !== null && (vendors?.length ?? 0) >= itemLimit;
 
-  const openAdd = () => { setEditingId(null); setForm({ ...emptyVendor, eventId }); setShowSheet(true); };
+  const openAdd = () => {
+    if (loading || limitReached) return;
+    setEditingId(null);
+    setForm({ ...emptyVendor, eventId });
+    setShowSheet(true);
+  };
   const openEdit = (v: Vendor) => {
     setEditingId(v?.id);
     setForm({ eventId: v?.eventId, category: v?.category, name: v?.name, contactName: v?.contactName, phone: v?.phone, email: v?.email, website: v?.website, arrivalTime: v?.arrivalTime, totalAmount: v?.totalAmount, depositPaid: v?.depositPaid, notes: v?.notes });
@@ -126,9 +135,15 @@ export function VendorsTab({ eventId, event, timeline }: { eventId: string; even
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-display text-lg font-semibold">Vendors ({vendors?.length ?? 0})</h3>
-        <Button onClick={openAdd} size="sm" className="gap-2"><Plus className="h-4 w-4" /> Add Vendor</Button>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="font-display text-lg font-semibold">Vendors ({vendors?.length ?? 0})</h3>
+          {itemLimit !== null && <p className="text-xs text-muted-foreground">{vendors?.length ?? 0} of {FREE_LIMITS.vendors} free-plan vendors</p>}
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={openAdd} disabled={loading || limitReached} size="sm" className="gap-2"><Plus className="h-4 w-4" /> Add Vendor</Button>
+          {limitReached && <Button asChild variant="outline" size="sm"><Link href="/pricing">Upgrade for more</Link></Button>}
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
