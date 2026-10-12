@@ -12,10 +12,10 @@ import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { BudgetItem, Vendor, VendorCategory, EventData, TimelineItem } from '@/types/firestore';
-import { Plus, Camera, Music, UtensilsCrossed, Flower2, UserCheck, Phone, Mail, Globe, Trash2, Link2, Edit2 } from 'lucide-react';
+import { Plus, Camera, Music, UtensilsCrossed, Flower2, UserCheck, Phone, Mail, Globe, Trash2, Link2, Edit2, Unlink } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
-import { doc, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
 import { formatMoney } from '@/lib/currency';
 import { FREE_LIMITS, getPlanningItemLimit } from '@/lib/plan-entitlements';
@@ -75,9 +75,31 @@ export function VendorsTab({
   const handleDeleteVendor = async (id?: string) => {
     if (!id) return;
     try {
+      const db = getFirestoreClient();
+      if (!db) throw new Error('Firestore is not configured.');
+      const vendor = vendors.find((item) => item.id === id);
+      if (vendor?.accessPassToken) {
+        const passRef = doc(db, 'publicVendorPasses', vendor.accessPassToken);
+        const passSnapshot = await getDoc(passRef);
+        if (passSnapshot.exists()) await deleteDoc(passRef);
+      }
       await deleteVendor?.(id);
     } catch (error: any) {
       toast.error(error?.message ?? 'Could not delete the vendor.');
+    }
+  };
+
+  const revokePass = async (vendor: Vendor) => {
+    const db = getFirestoreClient();
+    if (!db || !vendor.accessPassToken) return;
+    try {
+      const passRef = doc(db, 'publicVendorPasses', vendor.accessPassToken);
+      const passSnapshot = await getDoc(passRef);
+      if (passSnapshot.exists()) await deleteDoc(passRef);
+      await updateVendor?.(vendor.id, { accessPassToken: null });
+      toast.success('Vendor access pass revoked.');
+    } catch (error: any) {
+      toast.error(error?.message ?? 'Could not revoke the access pass.');
     }
   };
 
@@ -209,6 +231,9 @@ export function VendorsTab({
                 <div className="flex gap-1">
                   <Button variant="ghost" size="sm" aria-label={`Edit ${v?.name ?? 'vendor'}`} onClick={() => openEdit(v)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="sm" aria-label={`Copy access pass for ${v?.name ?? 'vendor'}`} onClick={() => generatePass(v)}><Link2 className="h-3.5 w-3.5" /></Button>
+                  {v.accessPassToken && (
+                    <Button variant="ghost" size="sm" aria-label={`Revoke access pass for ${v.name}`} onClick={() => revokePass(v)}><Unlink className="h-3.5 w-3.5 text-destructive" /></Button>
+                  )}
                   <Button variant="ghost" size="sm" aria-label={`Delete ${v?.name ?? 'vendor'}`} onClick={() => handleDeleteVendor(v?.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                 </div>
               </motion.div>

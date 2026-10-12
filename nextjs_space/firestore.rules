@@ -2,8 +2,24 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function hasActiveAppSession() {
+      return request.auth != null
+        && request.auth.token.get('appSessionId', null) is string
+        && request.auth.token.get('appSessionNonce', null) is string
+        && exists(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId))
+        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.deviceId == request.auth.token.appSessionId
+        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.sessionNonce == request.auth.token.appSessionNonce
+        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.get('revokedAt', null) == null
+        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.get('signedOutAt', null) == null
+        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.expiresAt is timestamp
+        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.lastActiveAt is timestamp
+        && request.time < get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.expiresAt
+        && request.time < get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.lastActiveAt + duration.value(35, 'm');
+    }
+
     function signedIn() {
-      return request.auth != null;
+      return hasActiveAppSession();
     }
 
     // Admin = custom claim `admin: true` (set via Admin SDK) OR membership in
@@ -241,32 +257,15 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Session governance: per-device session records under sessions/{userId}/devices.
-    // The doc id IS the stable device id. A record exists while a device holds
-    // an active session; users govern ONLY their own records. Client writes are
-    // restricted to the heartbeat / revocation fields (`lastActiveAt`,
-    // `expiresAt`, `signedOutAt`, `revokedAt`, label); setting `revokedAt`
-    // ends a session instantly from anywhere (the device's live watch signs it
-    // out). No user can forge another user's session doc.
+    // Session records are managed only by the trusted session API. A device
+    // can read its own record to observe revocation, but cannot alter it.
     match /sessions/{userId}/devices/{sessionId} {
-      allow read: if isUser(userId) || isAdmin();
-      allow create: if isUser(userId)
-        && request.resource.data.uid == userId
-        && request.resource.data.deviceId == sessionId
-        && request.resource.data.deviceLabel is string
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.lastActiveAt is timestamp
-        && request.resource.data.expiresAt is timestamp
-        && request.resource.data.keys().hasOnly([
-          'uid', 'deviceId', 'deviceLabel', 'createdAt',
-          'lastActiveAt', 'expiresAt', 'updatedAt']);
-      allow update: if isUser(userId)
-        && request.resource.data.uid == resource.data.uid
-        && request.resource.data.deviceId == resource.data.deviceId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'deviceLabel', 'lastActiveAt', 'expiresAt',
-          'signedOutAt', 'revokedAt', 'updatedAt']);
-      allow delete: if isUser(userId) || isAdmin();
+      allow read: if isAdmin()
+        || (request.auth != null
+          && request.auth.uid == userId
+          && request.auth.token.get('appSessionId', null) == sessionId
+          && request.auth.token.get('appSessionNonce', null) == resource.data.sessionNonce);
+      allow write: if false;
     }
 
     // Billing state and add-on entitlements are admin-managed or written by
@@ -461,7 +460,8 @@ service cloud.firestore {
           && request.resource.data.acceptedBy == request.auth.uid
           && hasCollaboratorSlot(resource.data.eventId)
           && !(request.auth.uid in eventDoc(resource.data.eventId).data.get('collaboratorIds', [])));
-      allow delete: if isAdmin() || isEventHost(resource.data.eventId);
+      allow delete: if isAdmin()
+        || (resource.data.eventId is string && isEventHost(resource.data.eventId));
     }
 
     // Collaboration claims: written by the invitee in the same batch that
@@ -506,17 +506,24 @@ service cloud.firestore {
 
     // Public vendor passes: token-keyed, vendor-facing. The token IS the
     // capability - anyone holding the link can read; hosts create their own
-    // event's passes via canManageEvent (verified against the stored eventId).
+    // event's passes via vendor-section access (verified against the stored eventId).
     // On update the eventId is immutable so a pass can never be re-pointed at
     // another event after creation.
     match /publicVendorPasses/{token} {
       allow read: if token.size() >= 32;
-      allow create: if isAdmin() || (canManageEvent(request.resource.data.eventId)
+      allow create: if isAdmin() || (request.resource.data.eventId is string
+        && (isEventHost(request.resource.data.eventId)
+          || collaboratorSectionAllowed(request.resource.data.eventId, 'vendors'))
         && request.resource.data.token == token && token.size() >= 32);
-      allow update: if isAdmin() || (canManageEvent(request.resource.data.eventId)
+      allow update: if isAdmin() || (request.resource.data.eventId is string
+        && (isEventHost(request.resource.data.eventId)
+          || collaboratorSectionAllowed(request.resource.data.eventId, 'vendors'))
         && request.resource.data.token == token && token.size() >= 32
         && request.resource.data.eventId == resource.data.eventId);
-      allow delete: if isAdmin();
+      allow delete: if isAdmin()
+        || (resource.data.eventId is string
+          && (isEventHost(resource.data.eventId)
+            || collaboratorSectionAllowed(resource.data.eventId, 'vendors')));
     }
 
     // Public gift pages: anyone can read (public); the doc id IS the event id,

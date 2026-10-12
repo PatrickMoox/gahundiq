@@ -1,7 +1,7 @@
-import { getApp, getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
-import { FREE_LIMITS, PAID_LIMITS } from '@/lib/plan-entitlements';
+import { verifyAppSession } from '@/lib/app-session';
+import { getGuestLimit } from '@/lib/plan-entitlements';
+import type { Subscription } from '@/types/firestore';
 
 export const runtime = 'nodejs';
 
@@ -10,14 +10,7 @@ function errorResponse(message: string, status: number) {
 }
 
 async function authenticate(request: Request) {
-  const tokenMatch = (request.headers.get('authorization') ?? '').match(/^Bearer\s+(.+)$/i);
-  if (!tokenMatch) return null;
-  const app = getApps().length ? getApp() : initializeApp();
-  try {
-    return await getAuth(app).verifyIdToken(tokenMatch[1]);
-  } catch {
-    return null;
-  }
+  return verifyAppSession(request);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -25,8 +18,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function POST(request: Request, context: { params: Promise<{ eventId: string }> }) {
-  const user = await authenticate(request);
-  if (!user) return errorResponse('Sign in to add a guest.', 401);
+  const user = await verifyAppSession(request);
+  if (!user) return errorResponse('Your app session is invalid or expired. Please sign in again.', 401);
   const { eventId } = await context.params;
 
   let body: unknown;
@@ -56,8 +49,7 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
     return errorResponse('RSVP status is invalid.', 400);
   }
 
-  const app = getApps().length ? getApp() : initializeApp();
-  const db = getFirestore(app);
+  const db = getFirestore();
   const eventRef = db.doc(`events/${eventId}`);
   const guestCollection = eventRef.collection('guests');
   const guestRef = guestCollection.doc();
@@ -85,11 +77,11 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
       const subscriptionSnapshot = event.hostId
         ? await transaction.get(db.doc(`subscriptions/${event.hostId}`))
         : null;
-      const subscription = subscriptionSnapshot?.data();
-      const defaultLimit = event.tier === 'premium' ? PAID_LIMITS.guests : FREE_LIMITS.guests;
-      const limit = typeof event.guestCapacityOverride === 'number'
-        ? event.guestCapacityOverride
-        : typeof subscription?.maxGuests === 'number' ? subscription.maxGuests : defaultLimit;
+      const subscription = subscriptionSnapshot?.data() as Subscription | undefined;
+      const limit = getGuestLimit({
+        tier: event.tier === 'premium' ? 'premium' : 'free',
+        guestCapacityOverride: event.guestCapacityOverride,
+      }, subscription);
       let count = event._guestUsageCount;
       if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
         const existingGuests = await transaction.get(guestCollection.limit(limit));
@@ -127,8 +119,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ even
   const guestId = new URL(request.url).searchParams.get('guestId');
   if (!guestId || guestId.includes('/')) return errorResponse('Guest ID is invalid.', 400);
 
-  const app = getApps().length ? getApp() : initializeApp();
-  const db = getFirestore(app);
+  const db = getFirestore();
   const eventRef = db.doc(`events/${eventId}`);
   const guestRef = eventRef.collection('guests').doc(guestId);
   const isAdmin = user.admin === true || (await db.doc(`admin/${user.uid}`).get()).exists;

@@ -104,7 +104,7 @@ export interface Vendor {
   depositPaid: number;
   balanceDueDate?: any;
   notes?: string;
-  accessPassToken?: string;
+  accessPassToken?: string | null;
   createdAt: any;
 }
 

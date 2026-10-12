@@ -2,11 +2,32 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { GoogleAuthProvider, createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut as firebaseSignOut, updateProfile, type User } from 'firebase/auth';
-import { collection, deleteField, doc, getDocFromServer, getDocsFromServer, onSnapshot, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { GoogleAuthProvider, createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithCustomToken, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut as firebaseSignOut, updateProfile, type User } from 'firebase/auth';
+import { doc, getDocFromServer, onSnapshot } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { getAuthClient, getFirestoreClient } from '@/lib/firebase';
-import { SESSION_POLICY, classifyDeviceLabel, getOrCreateDeviceId, isSessionActive, sessionExpiresAt, tsToMs } from '@/lib/session-policy';
+import { SESSION_POLICY, classifyDeviceLabel, getOrCreateDeviceId, isSessionActive, tsToMs } from '@/lib/session-policy';
+
+async function requestSessionAction(
+  firebaseUser: User,
+  action: 'start' | 'heartbeat' | 'revoke',
+  details: Record<string, unknown> = {},
+): Promise<{ customToken?: string }> {
+  const idToken = await firebaseUser.getIdToken();
+  const response = await fetch('/api/auth/session', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...details }),
+  });
+  const result: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = result && typeof result === 'object' && 'message' in result
+      && typeof result.message === 'string' ? result.message : 'Could not verify your session.';
+    throw new Error(message);
+  }
+  if (!result || typeof result !== 'object') throw new Error('Invalid session response.');
+  return result as { customToken?: string };
+}
 
 interface AuthUser {
   uid: string;
@@ -95,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let heartbeatFailureCount = 0;
     let heartbeatWarningShown = false;
     let heartbeatWritePending = false;
+    let bootstrappedUid: string | null = null;
 
     const stopPolling = () => {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -121,18 +143,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     // ── Session governance engine (policy: lib/session-policy.ts) ────
-    // Force-sign-out: flag the session record ended, notify, sign out locally.
+    // Force-sign-out: revoke the server-managed session, then sign out locally.
     const forceSignOut = (reason: string) => {
       if (endingRef.current || localSignOutRef.current) return;
       endingRef.current = true;
       toast.warning(reason);
-      const db = getFirestoreClient();
-      const ref = sessionRefRef.current;
-      if (db && ref) {
-        updateDoc(ref, { signedOutAt: serverTimestamp(), updatedAt: serverTimestamp() })
-          .catch((error) => console.error('Could not mark the session as ended:', error));
-      }
       const auth = getAuthClient();
+      const currentUser = auth?.currentUser;
+      if (currentUser && sessionReadyRef.current) {
+        void requestSessionAction(currentUser, 'revoke').catch((error) => {
+          console.error('Could not revoke the app session:', error);
+        });
+      }
       if (auth) void firebaseSignOut(auth);
     };
 
@@ -167,66 +189,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     };
 
-    // Concurrent-device cap: when a new device signs in at the cap, evict the
-    // least-recently-active live device by flagging its session revoked.
-    const evictIfOverCap = async (db: any, uid: string, keepDeviceId: string) => {
-      const snap = await getDocsFromServer(collection(db, 'sessions', uid, 'devices'));
-      const now = Date.now();
-      const live = snap.docs
-        .filter((d: any) => d.id !== keepDeviceId)
-        .map((d: any) => ({ ref: d.ref, record: d.data() }))
-        .filter((x: any) => isSessionActive(x.record, now));
-      if (live.length < SESSION_POLICY.maxActiveSessions) return;
-      live.sort((a: any, b: any) => tsToMs(a.record.lastActiveAt) - tsToMs(b.record.lastActiveAt));
-      const evictCount = live.length - (SESSION_POLICY.maxActiveSessions - 1);
-      const batch = writeBatch(db);
-      live.slice(0, evictCount).forEach((x: any) =>
-        batch.update(x.ref, { revokedAt: serverTimestamp(), updatedAt: serverTimestamp() }));
-      await batch.commit();
-    };
+    // Exchanges a provider-authenticated identity for a server-issued token
+    // bound to the server-managed session record. Provider tokens are never
+    // admitted to protected Firestore data directly.
+    const ensureSession = async (firebaseUser: User): Promise<boolean> => {
+      const token = await firebaseUser.getIdTokenResult();
+      const sessionId = token.claims.appSessionId;
+      const nonce = token.claims.appSessionNonce;
+      if (typeof sessionId !== 'string' || typeof nonce !== 'string') {
+        if (bootstrappedUid === firebaseUser.uid) return false;
+        bootstrappedUid = firebaseUser.uid;
+        try {
+          await firebaseUser.getIdToken(true);
+          const result = await requestSessionAction(firebaseUser, 'start', {
+            deviceId: getOrCreateDeviceId(),
+            deviceLabel: classifyDeviceLabel(typeof navigator === 'undefined' ? null : navigator.userAgent),
+            displayName: firebaseUser.displayName ?? '',
+            photoURL: firebaseUser.photoURL ?? null,
+          });
+          if (typeof result.customToken !== 'string' || !result.customToken) {
+            throw new Error('The session service did not return a session token.');
+          }
+          const auth = getAuthClient();
+          if (!auth) throw new Error('Firebase Authentication is not configured.');
+          await signInWithCustomToken(auth, result.customToken);
+        } catch (error) {
+          bootstrappedUid = null;
+          throw error;
+        }
+        return false;
+      }
 
-    // Ensures a live session record exists for THIS device before the user is
-    // admitted to the app. Failure is handled by the caller as a sign-out.
-    const ensureSession = async (uid: string) => {
       const db = getFirestoreClient();
       if (!db) throw new Error('Firestore is not configured.');
-      const deviceId = getOrCreateDeviceId();
-      const ref = doc(db, 'sessions', uid, 'devices', deviceId);
+      const ref = doc(db, 'sessions', firebaseUser.uid, 'devices', sessionId);
       sessionRefRef.current = ref;
       watchSession(ref);
 
       try {
         const existing = await getDocFromServer(ref);
-        if (existing.exists()) {
-          // Re-authenticate on a known device, including an expired/revoked
-          // record. The rules allow only these session lifecycle fields to
-          // change on update, so preserve immutable identity/creation fields.
-          expiresAtRef.current = sessionExpiresAt(Date.now());
-          lastHeartbeatAtRef.current = Date.now();
-          await updateDoc(ref, {
-            deviceLabel: classifyDeviceLabel(typeof navigator === 'undefined' ? null : navigator.userAgent),
-            lastActiveAt: serverTimestamp(),
-            expiresAt: new Date(expiresAtRef.current),
-            signedOutAt: deleteField(),
-            revokedAt: deleteField(),
-            updatedAt: serverTimestamp(),
-          });
-        } else {
-          // New device or stale record: enforce the concurrent-device cap.
-          await evictIfOverCap(db, uid, deviceId);
-          expiresAtRef.current = sessionExpiresAt(Date.now());
-          lastHeartbeatAtRef.current = Date.now();
-          await setDoc(ref, {
-            uid,
-            deviceId,
-            deviceLabel: classifyDeviceLabel(typeof navigator === 'undefined' ? null : navigator.userAgent),
-            createdAt: serverTimestamp(),
-            lastActiveAt: serverTimestamp(),
-            expiresAt: new Date(expiresAtRef.current),
-            updatedAt: serverTimestamp(),
-          });
+        const record = existing.data();
+        if (!existing.exists() || record?.sessionNonce !== nonce || !isSessionActive(record, Date.now())) {
+          throw new Error('The app session has expired or was revoked.');
         }
+        expiresAtRef.current = tsToMs(record.expiresAt);
+        lastHeartbeatAtRef.current = tsToMs(record.lastActiveAt);
         sessionReadyRef.current = true;
+        return true;
       } catch (error) {
         sessionReadyRef.current = false;
         throw error;
@@ -238,9 +247,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const startHeartbeat = () => {
       stopHeartbeat();
       heartbeatTimer = setInterval(() => {
-        const db = getFirestoreClient();
-        const ref = sessionRefRef.current;
-        if (!db || !ref) return;
+        const auth = getAuthClient();
+        const currentUser = auth?.currentUser;
+        if (!currentUser || !sessionRefRef.current) return;
         const now = Date.now();
 
         // Absolute lifetime ceiling — a hard re-auth boundary.
@@ -264,7 +273,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             timeoutId = setTimeout(() => reject(timeoutError), SESSION_POLICY.heartbeatTimeoutMs);
           });
           Promise.race([
-            updateDoc(ref, { lastActiveAt: serverTimestamp(), updatedAt: serverTimestamp() }),
+            requestSessionAction(currentUser, 'heartbeat'),
             timeout,
           ])
             .then(() => {
@@ -303,7 +312,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       endingRef.current = false;
       sessionReadyRef.current = false;
       try {
-        await ensureSession(firebaseUser.uid);
+        const ready = await ensureSession(firebaseUser);
+        if (!ready) return;
       } catch (error) {
         console.error('Session governance could not be applied:', error);
         forceSignOut('Could not verify your session. Please check your connection and sign in again.');
@@ -337,21 +347,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       registryAdmin = false;
 
       if (!firebaseUser) {
-        // Session ended — either an explicit local sign-out (already marked the
-        // record), or an INVOLUNTARY one: password reset elsewhere (Firebase's
-        // hosted reset revokes every refresh token), an admin revocation, or an
-        // expired/revoked token. In the involuntary case the record is still
-        // marked "active" in the registry, so end it here to keep the session
-        // registry truthful.
-        if (!localSignOutRef.current) {
-          const db = getFirestoreClient();
-          const ref = sessionRefRef.current;
-          if (db && ref) {
-            updateDoc(ref, { signedOutAt: serverTimestamp(), revokedAt: serverTimestamp(), updatedAt: serverTimestamp() })
-              .catch((error) => console.error('Could not mark the session as ended:', error));
-          }
-        }
+        // Session records are server-managed; if Firebase ends an auth session
+        // unexpectedly, it naturally expires at its idle/absolute limit.
         localSignOutRef.current = false;
+        bootstrappedUid = null;
         setUser(null);
         setVerificationEmail(null);
         setLoading(false);
@@ -408,30 +407,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.replace(verificationEmail ? '/auth' : '/');
   }, [loading, user, verificationEmail, pathname, router]);
 
-  const syncProfile = useCallback(async (firebaseUser: { uid: string; email: string | null; displayName: string | null; photoURL: string | null }) => {
-    const db = getFirestoreClient();
-    if (!db) return;
-    await setDoc(doc(db, 'users', firebaseUser.uid), {
-      email: firebaseUser.email,
-      displayName: firebaseUser.displayName,
-      photoURL: firebaseUser.photoURL,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
-  }, []);
-
   const signIn = useCallback(async (email: string, password: string) => {
     const auth = getAuthClient();
     if (!auth) throw new Error('Firebase Authentication is not configured.');
-    const result = await signInWithEmailAndPassword(auth, email.trim(), password);
-    await syncProfile(result.user);
-  }, [syncProfile]);
+    await signInWithEmailAndPassword(auth, email.trim(), password);
+  }, []);
 
   const signUp = useCallback(async (email: string, password: string, name: string, continueUrl?: string) => {
     const auth = getAuthClient();
     if (!auth) throw new Error('Firebase Authentication is not configured.');
     const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
     await updateProfile(result.user, { displayName: name.trim() });
-    await syncProfile({ ...result.user, displayName: name.trim() });
     // Require email verification before the account can be used. The
     // verification screen offers a resend button, so a failed send here is
     // non-fatal and must not abort the sign-up itself.
@@ -441,22 +427,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.warn('Verification email could not be sent:', error);
     }
-  }, [syncProfile]);
+  }, []);
 
   const signInWithGoogle = useCallback(async () => {
     const auth = getAuthClient();
     if (!auth) throw new Error('Firebase Authentication is not configured.');
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
-      try {
-        await syncProfile(result.user);
-      } catch (error) {
-        // Authentication has already succeeded. A profile mirror is not
-        // required to establish the signed-in session.
-        console.error('Google sign-in succeeded, but profile sync failed:', error);
-        toast.warning('Signed in with Google, but profile details could not be saved.');
-      }
+      await signInWithPopup(auth, provider);
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error
         ? (error as { code?: string }).code
@@ -467,23 +445,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw error;
     }
-  }, [syncProfile]);
+  }, []);
 
   const signOutFn = useCallback(async () => {
-    // End THIS device's session record first (fire-and-forget), then sign out
-    // of Firebase.
+    // Revoke THIS device's server-managed session before signing out.
     localSignOutRef.current = true;
     endingRef.current = false;
-    const db = getFirestoreClient();
-    const ref = sessionRefRef.current;
-    if (db && ref) {
-      updateDoc(ref, { signedOutAt: serverTimestamp(), revokedAt: serverTimestamp(), updatedAt: serverTimestamp() })
-        .catch((error) => {
-          console.error('Could not mark the session as ended:', error);
-          toast.warning('You signed out, but this device could not update its session record.');
-        });
-    }
     const auth = getAuthClient();
+    const currentUser = auth?.currentUser;
+    if (currentUser && sessionReadyRef.current) {
+      try {
+        await requestSessionAction(currentUser, 'revoke');
+      } catch (error) {
+        console.error('Could not revoke the app session:', error);
+        toast.warning('You signed out, but the server could not revoke this session immediately.');
+      }
+    }
     if (auth) await firebaseSignOut(auth);
   }, []);
 

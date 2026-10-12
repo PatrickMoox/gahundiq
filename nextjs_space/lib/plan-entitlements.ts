@@ -51,9 +51,16 @@ export function getEventLimits(event: EventData) {
 
 export function getGuestLimit(
   event: Pick<EventData, 'tier' | 'guestCapacityOverride'>,
-  subscription?: Pick<Subscription, 'maxGuests'> | null,
+  subscription?: Pick<Subscription, 'maxGuests' | 'tier' | 'status' | 'currentPeriodEnd'> | null,
 ): number {
-  return event.guestCapacityOverride ?? subscription?.maxGuests ?? (event.tier === 'premium' ? PAID_LIMITS.guests : FREE_LIMITS.guests);
+  const planLimit = event.tier === 'premium' ? PAID_LIMITS.guests : FREE_LIMITS.guests;
+  const subscriptionLimit = subscription && isSubscriptionActive(subscription)
+    && typeof subscription.maxGuests === 'number'
+    && Number.isInteger(subscription.maxGuests)
+    && subscription.maxGuests > 0
+    ? subscription.maxGuests
+    : planLimit;
+  return event.guestCapacityOverride ?? subscriptionLimit;
 }
 
 export function getInvitationLimit(

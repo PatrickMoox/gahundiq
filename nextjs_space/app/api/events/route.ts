@@ -1,7 +1,6 @@
-import { getApp, getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
-import { FREE_LIMITS, PAID_LIMITS, isSubscriptionActive } from '@/lib/plan-entitlements';
+import { verifyAppSession } from '@/lib/app-session';
+import { FREE_LIMITS, PAID_LIMITS, getGuestLimit, isSubscriptionActive } from '@/lib/plan-entitlements';
 import { CURRENCIES } from '@/lib/currency';
 import type { Subscription } from '@/types/firestore';
 
@@ -18,16 +17,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function POST(request: Request) {
-  const tokenMatch = (request.headers.get('authorization') ?? '').match(/^Bearer\s+(.+)$/i);
-  if (!tokenMatch) return errorResponse('Sign in to create a ceremony.', 401);
-
-  const app = getApps().length ? getApp() : initializeApp();
-  let user;
-  try {
-    user = await getAuth(app).verifyIdToken(tokenMatch[1]);
-  } catch {
-    return errorResponse('Your session has expired. Please sign in again.', 401);
-  }
+  const user = await verifyAppSession(request);
+  if (!user) return errorResponse('Your app session is invalid or expired. Please sign in again.', 401);
 
   let body: unknown;
   try {
@@ -63,7 +54,7 @@ export async function POST(request: Request) {
   const ceremonyDate = body.date as string | null;
   const currency = body.currency;
 
-  const db = getFirestore(app);
+  const db = getFirestore();
   const admin = user.admin === true || (await db.doc(`admin/${user.uid}`).get()).exists;
   const subscriptionRef = db.doc(`subscriptions/${user.uid}`);
   const userEventLockRef = db.doc(`_eventCreationLocks/${user.uid}`);
@@ -79,6 +70,7 @@ export async function POST(request: Request) {
       const subscription = subscriptionSnapshot.data() as Subscription | undefined;
       const premium = isSubscriptionActive(subscription);
       const tier = premium ? 'premium' : 'free';
+      const guestLimit = getGuestLimit({ tier }, subscription);
       const planLimit = premium
         ? (typeof subscription?.maxEvents === 'number' && Number.isInteger(subscription.maxEvents) && subscription.maxEvents > 0
           ? subscription.maxEvents
@@ -91,11 +83,9 @@ export async function POST(request: Request) {
           status: 409,
         } as const;
       }
-      if (!admin && guestCount > (typeof subscription?.maxGuests === 'number'
-        ? subscription.maxGuests
-        : premium ? PAID_LIMITS.guests : FREE_LIMITS.guests)) {
+      if (!admin && guestCount > guestLimit) {
         return {
-          error: `Your ${tier} plan supports up to ${subscription?.maxGuests ?? (premium ? PAID_LIMITS.guests : FREE_LIMITS.guests)} guests per ceremony.`,
+          error: `Your ${tier} plan supports up to ${guestLimit} guests per ceremony.`,
           status: 409,
         } as const;
       }

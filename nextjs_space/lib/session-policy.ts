@@ -10,22 +10,18 @@
 //     same record while different browsers/devices open their own.
 //   - `lastActiveAt` is refreshed by a visibility-aware heartbeat (hidden tabs
 //     are "away" and count toward the idle timeout).
-//   - Idle expiry is enforced locally: now - lastActiveAt > idle + grace.
-//   - Absolute expiry (`expiresAt`) is a hard ceiling enforced locally, and
-//     refreshed only on re-authentication.
-//   - Session governance is fail-closed: failure to create/read a session
-//     record or keep its heartbeat/watch alive signs the local user out with a
-//     visible message instead of silently running without enforcement.
-//   - Revocation (sign-out from another device, admin action, LRU eviction at
-//     the concurrent-device cap) is enforced by a live snapshot watch on the
-//     session doc, which force-signs-out the affected device.
-//   - Password resets: Firebase's hosted reset flow revokes the user's refresh
-//     tokens, so every device is signed out by Firebase itself. The affected
-//     devices detect this as an involuntary sign-out (onAuthStateChanged(null))
-//     and end their session record, keeping the registry truthful. NOTE: without
-//     a Cloud Function trigger on user update, revocation of OTHER devices lands
-//     within Firebase's token-refresh window (~1h) or the idle timeout, not
-//     instantly — the local device's own record is always ended immediately.
+//   - A server-issued Firebase custom token binds the app session id and nonce.
+//     Firestore and Storage rules, plus authenticated API routes, validate the
+//     token against this record and enforce the idle and absolute expiry.
+//   - Session records and concurrency eviction are server-managed; the client
+//     can only monitor its own record and request heartbeat/revocation actions.
+//   - A live snapshot watch signs out the affected device promptly after
+//     revocation; authorization is still enforced server-side if the watch is
+//     interrupted.
+//   - Password resets revoke refresh tokens, but direct Firestore rules cannot
+//     query that revocation state. An already-issued ID token may remain usable
+//     until its normal expiry (about an hour); immediate global revocation
+//     requires a trusted auth-user update trigger to revoke every session doc.
 // ============================================================================
 
 import { v4 as uuidv4 } from 'uuid';
