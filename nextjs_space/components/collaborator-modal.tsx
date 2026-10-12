@@ -16,7 +16,7 @@ import { useSubscription } from '@/lib/hooks/use-subscription';
 import { toast } from 'sonner';
 import type { CollabInvite, EventData } from '@/types/firestore';
 import {
-  COLLAB_INVITE_TTL_MS, COLLABORATOR_LIMITS, getCollaboratorLimit, MONEY_SECTIONS, SECTION_LABELS,
+  COLLAB_INVITE_TTL_MS, COLLABORATOR_LIMITS, getCollaboratorLimit, RESTRICTED_SECTIONS, SECTION_LABELS,
   collabClaimId, collabInviteLink, generateCollabToken, isSectionShared,
 } from '@/lib/collab';
 import type { ShareableSection } from '@/types/firestore';
@@ -43,6 +43,8 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
   const [copied, setCopied] = useState<string | null>(null);
   const [lastLink, setLastLink] = useState<string | null>(null);
   const [shareBudgetForInvite, setShareBudgetForInvite] = useState(false);
+  const [shareGuestsForInvite, setShareGuestsForInvite] = useState(false);
+  const [shareGiftsForInvite, setShareGiftsForInvite] = useState(false);
   /** Collaborator whose privacy panel is expanded (host only). */
   const [expandedUid, setExpandedUid] = useState<string | null>(null);
 
@@ -97,12 +99,16 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
         invitedBy: user.uid,
         invitedByName: user.displayName || 'Host',
         shareBudget: shareBudgetForInvite,
+        shareGuests: shareGuestsForInvite,
+        shareGifts: shareGiftsForInvite,
         status: 'pending',
         createdAt: serverTimestamp(),
         expiresAt: new Date(Date.now() + COLLAB_INVITE_TTL_MS),
       });
       setLastLink(collabInviteLink(token));
       setShareBudgetForInvite(false);
+      setShareGuestsForInvite(false);
+      setShareGiftsForInvite(false);
       toast.success('Invite link created — share it with your partner.');
     } catch (error: any) {
       toast.error(error?.message ?? 'Could not create the invite.');
@@ -163,8 +169,8 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
   };
 
   /**
-   * Host opens/closes a money section (vendors, budget) for one collaborator.
-   * Host-only write (rules: 'collaboratorAccess' is in the host update keys).
+   * Host opens/closes a restricted section for one collaborator. Host-only
+   * write (rules: 'collaboratorAccess' is in the host update keys).
    * The live event doc propagates it — the collaborator's tabs update instantly.
    */
   const setSectionAccess = async (uid: string, section: ShareableSection, shared: boolean) => {
@@ -195,7 +201,7 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
             <Users className="h-5 w-5 text-primary" /> Plan together
           </DialogTitle>
           <DialogDescription>
-            Add your partner, family, or planner. Core planning is shared live — money stays private by default, and you decide who sees what.
+            Add your partner, family, or planner. Timeline, tasks, and seating are shared live. Guest details, gifts, and financial information stay private unless you choose to share them.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
@@ -233,15 +239,15 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
                         </div>
                       )}
                     </div>
-                    {/* Privacy panel: money sections are OFF by default (safe
-                        default — the rules enforce it, this just mirrors it). */}
+                    {/* Sensitive sections are opt-in; Firestore rules enforce
+                        the same defaults as this panel. */}
                     {isHost && expandedUid === uid && (
                       <div className="border-t border-border px-3 py-2.5">
                         <p className="mb-2.5 text-xs text-muted-foreground">
-                          Timeline, guests, tasks &amp; seating are shared. Money stays private unless you open it.
+                          Timeline, tasks, and seating are shared by default. Guest details, gift records, and financial sections stay private until shared.
                         </p>
                         <div className="space-y-2.5">
-                          {MONEY_SECTIONS.map((section) => (
+                          {RESTRICTED_SECTIONS.map((section) => (
                             <div key={section} className="flex items-center justify-between gap-3">
                               <span className="text-sm">{SECTION_LABELS[section]}</span>
                               <Switch
@@ -286,19 +292,26 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
                 </p>
               </div>
               <p className="mb-2 text-sm font-medium">Invite by link</p>
-              <div className="mb-3 flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted/20 p-3">
-                <div>
-                  <p className="text-sm font-medium">Let them view and manage the budget</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    They can add, edit, and remove budget items. Off by default.
-                  </p>
-                </div>
-                <Switch
-                  checked={shareBudgetForInvite}
-                  disabled={creating}
-                  onCheckedChange={setShareBudgetForInvite}
-                  aria-label="Allow this collaborator to view and manage the budget"
-                />
+              <div className="mb-3 space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+                <p className="text-sm font-medium">Optional access for this collaborator</p>
+                {([
+                  ['budget', 'Budget', 'View and manage budget items.', shareBudgetForInvite, setShareBudgetForInvite],
+                  ['guests', 'Guest list', 'View and manage guest details and invitations.', shareGuestsForInvite, setShareGuestsForInvite],
+                  ['gifts', 'Gift records', 'View gift amounts, messages, and guest details (read-only).', shareGiftsForInvite, setShareGiftsForInvite],
+                ] as const).map(([section, label, description, checked, setChecked]) => (
+                  <div key={section} className="flex items-center justify-between gap-4 border-t border-border/50 pt-2">
+                    <div>
+                      <p className="text-sm font-medium">{label}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{description} Off by default.</p>
+                    </div>
+                    <Switch
+                      checked={checked}
+                      disabled={creating}
+                      onCheckedChange={setChecked}
+                      aria-label={`Share ${label.toLowerCase()} with this collaborator`}
+                    />
+                  </div>
+                ))}
               </div>
               <Button onClick={createInvite} disabled={creating || collaborators.length >= collaboratorLimit} className="w-full gap-2">
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Create invite link
@@ -331,7 +344,11 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
                           <div className="min-w-0">
                             <span className="block truncate text-xs text-muted-foreground">…{link.slice(-24)}</span>
                             <span className="text-[10px] text-muted-foreground">
-                              {invite.shareBudget === true ? 'Budget access enabled' : 'Budget private'}
+                              {[
+                                invite.shareBudget === true && 'Budget',
+                                invite.shareGuests === true && 'Guests',
+                                invite.shareGifts === true && 'Gifts',
+                              ].filter(Boolean).join(', ') || 'Sensitive sections private'}
                             </span>
                           </div>
                           <div className="flex flex-shrink-0 gap-1">

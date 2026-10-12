@@ -46,12 +46,8 @@ export function getCollaboratorLimit(
 
 // ── Phase 1.5: section sharing (host controls what collaborators see) ──────
 
-/**
- * Sections that carry financial data (vendor pricing, budget spend). These are
- * HIDDEN from collaborators unless the host explicitly opens them — the safe
- * default: "everything doesn't worth to be shared."
- */
-export const MONEY_SECTIONS: readonly ShareableSection[] = ['vendors', 'budget'] as const;
+/** Sensitive sections stay hidden until the host explicitly shares them. */
+export const RESTRICTED_SECTIONS: readonly ShareableSection[] = ['vendors', 'budget', 'guests', 'gifts'] as const;
 
 /** Human labels for the collaborator access toggles. */
 export const SECTION_LABELS: Record<ShareableSection, string> = {
@@ -61,12 +57,12 @@ export const SECTION_LABELS: Record<ShareableSection, string> = {
   seating: 'Seating',
   tasks: 'Tasks',
   budget: 'Budget',
+  gifts: 'Gift records',
 };
 
 /**
- * Client mirror of the rules' collabSection() default: a section is shared
- * unless it is a money section, or the host explicitly flipped it. The RULES
- * are the authority — this exists so the UI hides tabs without probing.
+ * Client mirror of the rules' collaborator section defaults. Sensitive
+ * sections require explicit host permission; the rules are authoritative.
  */
 export function isSectionShared(
   access: Record<string, CollaboratorAccess> | undefined | null,
@@ -76,7 +72,7 @@ export function isSectionShared(
   if (!uid) return false;
   const value = access?.[uid]?.[section];
   if (typeof value === 'boolean') return value;
-  return !MONEY_SECTIONS.includes(section);
+  return !RESTRICTED_SECTIONS.includes(section);
 }
 
 /** URL-safe 40-char capability token (same shape/entropy as guest invites). */

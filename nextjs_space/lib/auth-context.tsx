@@ -27,12 +27,12 @@ interface AuthContextType {
    */
   verificationEmail: string | null;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string, continueUrl?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   /** Sends the Firebase hosted password-reset email; the new password applies system-wide. */
   resetPassword: (email: string) => Promise<void>;
-  resendVerificationEmail: () => Promise<void>;
+  resendVerificationEmail: (continueUrl?: string) => Promise<void>;
   /** Re-checks verification immediately; resolves true once verified and activated. */
   checkVerification: () => Promise<boolean>;
 }
@@ -426,7 +426,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await syncProfile(result.user);
   }, [syncProfile]);
 
-  const signUp = useCallback(async (email: string, password: string, name: string) => {
+  const signUp = useCallback(async (email: string, password: string, name: string, continueUrl?: string) => {
     const auth = getAuthClient();
     if (!auth) throw new Error('Firebase Authentication is not configured.');
     const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
@@ -436,7 +436,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // verification screen offers a resend button, so a failed send here is
     // non-fatal and must not abort the sign-up itself.
     try {
-      await sendEmailVerification(result.user);
+      if (continueUrl) await sendEmailVerification(result.user, { url: continueUrl });
+      else await sendEmailVerification(result.user);
     } catch (error) {
       console.warn('Verification email could not be sent:', error);
     }
@@ -492,12 +493,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await sendPasswordResetEmail(auth, email.trim());
   }, []);
 
-  const resendVerificationEmail = useCallback(async () => {
+  const resendVerificationEmail = useCallback(async (continueUrl?: string) => {
     const auth = getAuthClient();
     const current = auth?.currentUser ?? null;
     if (!auth || !current) throw new Error('No active session. Please sign in again.');
     if (current.emailVerified) { await activateRef.current?.(current); return; }
-    await sendEmailVerification(current);
+    if (continueUrl) await sendEmailVerification(current, { url: continueUrl });
+    else await sendEmailVerification(current);
   }, []);
 
   const checkVerification = useCallback(async () => {

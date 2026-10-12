@@ -38,6 +38,21 @@ const friendlyAuthError = (err: any): string => {
   return messages[code] ?? err?.message ?? 'Something went wrong. Please try again.';
 };
 
+function getSafeReturnTo(): string {
+  const requested = new URLSearchParams(window.location.search).get('returnTo');
+  if (!requested?.startsWith('/') || requested.startsWith('//')) return '/dashboard';
+  const destination = new URL(requested, window.location.origin);
+  if (destination.origin !== window.location.origin) return '/dashboard';
+  return `${destination.pathname}${destination.search}${destination.hash}`;
+}
+
+function getVerificationContinueUrl(): string {
+  const destination = new URL('/auth', window.location.origin);
+  const returnTo = getSafeReturnTo();
+  if (returnTo !== '/dashboard') destination.searchParams.set('returnTo', returnTo);
+  return destination.toString();
+}
+
 export function AuthClient() {
   const {
     signIn, signUp, signInWithGoogle, signOut, resetPassword,
@@ -55,10 +70,10 @@ export function AuthClient() {
   const [resending, setResending] = useState(false);
   const [checking, setChecking] = useState(false);
 
-  // Single source of navigation: whenever an activated (verified) identity
-  // exists, the app takes over. Unverified users stay here on the gate panel.
+  // Preserve internal invitation destinations across email and Google auth.
+  // Unverified users stay here until Firebase activates their identity.
   useEffect(() => {
-    if (user) router.replace('/dashboard');
+    if (user) router.replace(getSafeReturnTo());
   }, [user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,7 +85,7 @@ export function AuthClient() {
         // Verified accounts activate asynchronously and the effect above
         // navigates. Unverified ones land on the verification panel.
       } else {
-        await signUp?.(email, password, name);
+        await signUp?.(email, password, name, getVerificationContinueUrl());
         toast.success('Account created! Check your inbox to verify your email.');
       }
     } catch (err: any) {
@@ -108,7 +123,7 @@ export function AuthClient() {
   const handleResend = async () => {
     setResending(true);
     try {
-      await resendVerificationEmail?.();
+      await resendVerificationEmail?.(getVerificationContinueUrl());
       toast.success('Verification email sent again.');
     } catch (err: any) {
       toast.error(friendlyAuthError(err));

@@ -61,17 +61,14 @@ service cloud.firestore {
       return isEventHost(eventId) || isEventCollaborator(eventId);
     }
 
-    // Collaboration section sharing (Phase 1.5): collaborators always get the
-    // core planning sections, but money sections ('budget', 'vendors') are
-    // HIDDEN unless the host explicitly opened them for that uid. The event
-    // doc carries `collaboratorAccess: { uid: { section: bool } }`; an absent
-    // entry falls back to the safe default below. The UI mirrors this (see
-    // lib/collab.ts isSectionShared) but THESE RULES are the enforcement.
+    // Core planning is shared by default. Budget, vendors, guests, and gifts
+    // require explicit host permission. The UI mirrors this default, but
+    // these rules are the authorization boundary.
     function collaboratorSectionAllowed(eventId, section) {
       return isEventCollaborator(eventId)
         && eventDoc(eventId).data.get('collaboratorAccess', {})
           .get(request.auth.uid, {})
-          .get(section, section != 'budget' && section != 'vendors');
+          .get(section, section in ['timeline', 'tasks', 'seating']);
     }
 
     function validPlanningReferences(eventId) {
@@ -98,11 +95,20 @@ service cloud.firestore {
       let access = request.resource.data.get('collaboratorAccess', {});
       let priorAccess = resource.data.get('collaboratorAccess', {});
       let claim = get(/databases/$(database)/documents/collabClaims/$(eventId + '_' + request.auth.uid)).data;
+      let userAccess = access.get(request.auth.uid, {});
       return access.diff(priorAccess).affectedKeys().hasOnly([request.auth.uid])
+        && userAccess.keys().hasOnly(['budget', 'guests', 'gifts'])
         && (claim.get('shareBudget', false)
-          ? access.get(request.auth.uid, {}).get('budget', false) == true
-            && access.get(request.auth.uid, {}).keys().hasOnly(['budget'])
-          : !(request.auth.uid in access.keys()));
+          ? userAccess.get('budget', false) == true
+          : !('budget' in userAccess))
+        && (claim.get('shareGuests', false)
+          ? userAccess.get('guests', false) == true
+          : !('guests' in userAccess))
+        && (claim.get('shareGifts', false)
+          ? userAccess.get('gifts', false) == true
+          : !('gifts' in userAccess))
+        && (claim.get('shareBudget', false) || claim.get('shareGuests', false) || claim.get('shareGifts', false)
+          || !(request.auth.uid in access.keys()));
     }
 
     function publicGiftPageIsActive(eventId) {
@@ -376,25 +382,29 @@ service cloud.firestore {
 
       // Digital invitations: token-keyed, guest-facing. The 40-char token IS
       // the capability - anyone holding the link can read the invite and
-      // respond (RSVP only); hosts manage their event's invites via
-      // canManageEvent. Invite count is metered by the plan's invite quota.
+      // respond (RSVP only); hosts and collaborators with guest access manage
+      // invite records. Invite count is metered by the plan's invite quota.
       match /invites/{token} {
-        allow read: if canManageEvent(eventId) || token.size() >= 32;
-        allow create: if canManageEvent(eventId)
+        allow get: if isAdmin() || isEventHost(eventId)
+          || collaboratorSectionAllowed(eventId, 'guests') || token.size() >= 32;
+        allow list: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
+        allow create: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests'))
           && request.resource.data.token == token
           && request.resource.data.eventId == eventId
           && request.resource.data.token.size() >= 32;
-        allow update: if canManageEvent(eventId)
+        allow update: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests')
           || (token.size() >= 32
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rsvp', 'respondedAt'])
             && request.resource.data.rsvp in ['pending', 'confirmed', 'declined']
             && request.resource.data.respondedAt is timestamp);
-        allow delete: if canManageEvent(eventId);
+        allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
       }
 
-      // Cash gifts contain payment-related data and are never readable by collaborators.
+      // Gift records contain payment and guest data; only hosts/admins or
+      // collaborators explicitly granted gift access may read them.
       match /gifts/{giftId} {
-        allow read: if (isEventHost(eventId) && isPaidEvent(eventId)) || isAdmin();
+        allow read: if isAdmin() || (isPaidEvent(eventId)
+          && (isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'gifts')));
         allow create: if isAdmin() || (isPaidEvent(eventId)
           && publicGiftPageIsActive(eventId)
           && hasOnlyPublicGiftFields());
@@ -424,9 +434,14 @@ service cloud.firestore {
         && request.resource.data.invitedBy == request.auth.uid
         && (!('shareBudget' in request.resource.data)
           || request.resource.data.shareBudget is bool)
+        && (!('shareGuests' in request.resource.data)
+          || request.resource.data.shareGuests is bool)
+        && (!('shareGifts' in request.resource.data)
+          || request.resource.data.shareGifts is bool)
         && request.resource.data.expiresAt is timestamp
         && request.resource.data.keys().hasOnly([
-          'token', 'eventId', 'eventTitle', 'invitedBy', 'invitedByName', 'shareBudget',
+          'token', 'eventId', 'eventTitle', 'invitedBy', 'invitedByName',
+          'shareBudget', 'shareGuests', 'shareGifts',
           'createdAt', 'expiresAt', 'status']);
       allow update: if isAdmin()
         // Inviter-side: revoke only (never flip a revoked invite back to pending).
@@ -434,8 +449,8 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
           && request.resource.data.status in ['pending', 'revoked'])
         // Invitee-side: accept only, only themselves, only before expiry. The
-        // diff() key restriction plus the create rule's fixed 9-field shape
-        // fully constrain the resulting document — no extra shape check needed.
+        // diff() key restriction plus the create rule's field whitelist fully
+        // constrain the resulting document — no extra shape check needed.
         || (signedIn()
           && resource.data.status == 'pending'
           && resource.data.expiresAt is timestamp
@@ -466,13 +481,20 @@ service cloud.firestore {
         && request.resource.data.token.size() >= 32
         && (!('shareBudget' in request.resource.data)
           || request.resource.data.shareBudget is bool)
-        && request.resource.data.keys().hasOnly(['eventId', 'uid', 'displayName', 'token', 'shareBudget', 'createdAt'])
+        && (!('shareGuests' in request.resource.data)
+          || request.resource.data.shareGuests is bool)
+        && (!('shareGifts' in request.resource.data)
+          || request.resource.data.shareGifts is bool)
+        && request.resource.data.keys().hasOnly([
+          'eventId', 'uid', 'displayName', 'token', 'shareBudget', 'shareGuests', 'shareGifts', 'createdAt'])
         && hasCollaboratorSlot(request.resource.data.eventId)
         && !(request.auth.uid in eventDoc(request.resource.data.eventId).data.get('collaboratorIds', []))
         && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.status == 'accepted'
         && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.acceptedBy == request.auth.uid
         && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.eventId == request.resource.data.eventId
-        && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.get('shareBudget', false) == request.resource.data.get('shareBudget', false);
+        && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.get('shareBudget', false) == request.resource.data.get('shareBudget', false)
+        && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.get('shareGuests', false) == request.resource.data.get('shareGuests', false)
+        && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.get('shareGifts', false) == request.resource.data.get('shareGifts', false);
       allow delete: if isAdmin()
         || (signedIn() && resource.data.uid == request.auth.uid)
         // The event host removes claims when kicking a collaborator (so the

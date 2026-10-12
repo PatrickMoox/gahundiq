@@ -43,8 +43,8 @@ export function EventHubClient({ eventId }: { eventId: string }) {
     Boolean(user && event && (event.hostId === user.uid || isSectionShared(event.collaboratorAccess, user.uid, section)));
   const { vendors } = useVendors(eventId, canLoadSection('vendors'));
   const { items: budgetItems } = useBudget(eventId, canLoadSection('budget'));
-  const { guests } = useGuests(eventId);
-  const { invites } = useEventInvites(eventId);
+  const { guests } = useGuests(eventId, canLoadSection('guests'));
+  const { invites } = useEventInvites(eventId, canLoadSection('guests'));
   const router = useRouter();
   // Broadcast modal counts must reflect real guest responses from the public
   // invite links (invite docs), not just the host-set guest.rsvp field.
@@ -54,9 +54,9 @@ export function EventHubClient({ eventId }: { eventId: string }) {
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showCollab, setShowCollab] = useState(false);
   // Collaboration: the host sees everything. Collaborators get the core
-  // planning sections; money sections (vendors, budget) stay hidden unless
-  // the host opened them, and gifts are NEVER shared (rules make gift reads
-  // host-only). The rules are the enforcement — this mirrors lib/collab.ts.
+  // planning sections; budget, vendors, guests, and gifts stay hidden unless
+  // the host opened them. The rules are the enforcement — this mirrors
+  // lib/collab.ts.
   const isHost = Boolean(user && event && event.hostId === user.uid);
   const { subscription } = useSubscription(isHost ? user?.uid : null);
   const guestLimit = event ? getGuestLimit(event, isHost ? subscription : null) : undefined;
@@ -81,9 +81,8 @@ export function EventHubClient({ eventId }: { eventId: string }) {
 
   useEffect(() => {
     if (isHost) return;
-    const visible = activeTab !== 'gifts'
-      && ((activeTab !== 'vendors' && activeTab !== 'budget')
-        || isSectionShared(event?.collaboratorAccess, user?.uid, activeTab as ShareableSection));
+    const visible = !(['vendors', 'budget', 'guests', 'gifts'].includes(activeTab)
+      && !isSectionShared(event?.collaboratorAccess, user?.uid, activeTab as ShareableSection));
     if (!visible) setActiveTab('timeline');
   }, [isHost, activeTab, event?.collaboratorAccess, user?.uid]);
 
@@ -170,13 +169,15 @@ export function EventHubClient({ eventId }: { eventId: string }) {
               {canSeeSection('vendors') && (
                 <TabsTrigger value="vendors" className="gap-1.5"><UserCheck className="h-3.5 w-3.5" /> Vendors</TabsTrigger>
               )}
-              <TabsTrigger value="guests" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Guests</TabsTrigger>
+              {canSeeSection('guests') && (
+                <TabsTrigger value="guests" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Guests</TabsTrigger>
+              )}
               <TabsTrigger value="seating" className="gap-1.5"><Armchair className="h-3.5 w-3.5" /> Seating</TabsTrigger>
               <TabsTrigger value="tasks" className="gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Tasks</TabsTrigger>
               {canSeeSection('budget') && (
                 <TabsTrigger value="budget" className="gap-1.5"><DollarSign className="h-3.5 w-3.5" /> Budget</TabsTrigger>
               )}
-              {isHost && (
+              {canSeeSection('gifts') && (
                 <TabsTrigger value="gifts" className="gap-1.5"><Gift className="h-3.5 w-3.5" /> Gifts</TabsTrigger>
               )}
             </TabsList>
@@ -185,14 +186,16 @@ export function EventHubClient({ eventId }: { eventId: string }) {
             {canSeeSection('vendors') && (
               <TabsContent value="vendors"><VendorsTab eventId={eventId} event={event} timeline={timelineItems} budgetItems={canSeeSection('budget') ? budgetItems : []} canLinkBudget={canSeeSection('budget')} /></TabsContent>
             )}
-            <TabsContent value="guests"><GuestsTab eventId={eventId} event={event} guestLimit={guestLimit} /></TabsContent>
+            {canSeeSection('guests') && (
+              <TabsContent value="guests"><GuestsTab eventId={eventId} event={event} guestLimit={guestLimit} /></TabsContent>
+            )}
             <TabsContent value="seating"><PlanFeatureGate event={event} feature="seating"><SeatingTab eventId={eventId} /></PlanFeatureGate></TabsContent>
             <TabsContent value="tasks"><TasksTab eventId={eventId} event={event} vendors={canSeeSection('vendors') ? vendors : []} budgetItems={canSeeSection('budget') ? budgetItems : []} canLinkVendors={canSeeSection('vendors')} canLinkBudget={canSeeSection('budget')} /></TabsContent>
             {canSeeSection('budget') && (
               <TabsContent value="budget"><BudgetTab eventId={eventId} event={event} vendors={canSeeSection('vendors') ? vendors : []} canLinkVendors={canSeeSection('vendors')} /></TabsContent>
             )}
-            {isHost && (
-              <TabsContent value="gifts"><PlanFeatureGate event={event} feature="gifts"><GiftsTab eventId={eventId} event={event} /></PlanFeatureGate></TabsContent>
+            {canSeeSection('gifts') && (
+              <TabsContent value="gifts"><PlanFeatureGate event={event} feature="gifts"><GiftsTab eventId={eventId} event={event} canAccess={canLoadSection('gifts')} /></PlanFeatureGate></TabsContent>
             )}
           </Tabs>
         </motion.div>

@@ -77,7 +77,7 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
         const access = isRecord(event.collaboratorAccess) ? event.collaboratorAccess : {};
         const accessEntry = access[user.uid];
         const userAccess = isRecord(accessEntry) ? accessEntry : {};
-        if (userAccess.guests === false) {
+        if (userAccess.guests !== true) {
           return { error: 'The host has not shared the guest list with you.', status: 403 } as const;
         }
       }
@@ -147,7 +147,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ even
         const access = isRecord(event.collaboratorAccess) ? event.collaboratorAccess : {};
         const accessEntry = access[user.uid];
         const userAccess = isRecord(accessEntry) ? accessEntry : {};
-        if (userAccess.guests === false) {
+        if (userAccess.guests !== true) {
           return { error: 'The host has not shared the guest list with you.', status: 403 } as const;
         }
       }

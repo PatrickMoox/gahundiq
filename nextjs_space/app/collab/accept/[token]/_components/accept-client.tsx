@@ -21,7 +21,7 @@ type Phase = 'loading' | 'signin' | 'invalid' | 'revoked' | 'removed' | 'expired
  * Accept screen for a collaboration invite link (`/collab/accept/{token}`).
  * Accepting writes the invite acceptance + claim doc atomically, then adds the
  * user's own uid to the event's collaboratorIds (authorized by the claim —
- * see firestore.rules). Requires sign-in; revisit the link after signing in.
+ * see firestore.rules). The invite URL is retained through authentication.
  */
 export function AcceptClient({ token }: { token: string }) {
   const { user, loading: authLoading } = useAuth();
@@ -78,10 +78,15 @@ export function AcceptClient({ token }: { token: string }) {
     const db = getFirestoreClient();
     if (!db || !user || !invite) throw new Error('Not ready.');
     const name = (user.displayName || user.email?.split('@')[0] || 'Collaborator').slice(0, 60);
+    const access = {
+      ...(invite.shareBudget === true ? { budget: true } : {}),
+      ...(invite.shareGuests === true ? { guests: true } : {}),
+      ...(invite.shareGifts === true ? { gifts: true } : {}),
+    };
     await updateDoc(doc(db, 'events', invite.eventId), {
       collaboratorIds: arrayUnion(user.uid),
       [`collaboratorNames.${user.uid}`]: name,
-      [`collaboratorAccess.${user.uid}`]: invite.shareBudget === true ? { budget: true } : deleteField(),
+      [`collaboratorAccess.${user.uid}`]: Object.keys(access).length ? access : deleteField(),
       updatedAt: serverTimestamp(),
     });
   };
@@ -102,6 +107,8 @@ export function AcceptClient({ token }: { token: string }) {
         batch.set(doc(db, 'collabClaims', collabClaimId(invite.eventId, user.uid)), {
           eventId: invite.eventId, uid: user.uid, displayName: name, token,
           shareBudget: invite.shareBudget === true,
+          shareGuests: invite.shareGuests === true,
+          shareGifts: invite.shareGifts === true,
           createdAt: serverTimestamp(),
         });
         await batch.commit();
@@ -136,8 +143,8 @@ export function AcceptClient({ token }: { token: string }) {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : phase === 'signin' ? (
-          <Card title="Sign in to join this ceremony" body="Collaboration links are personal — sign in (or create a free account) first, then open the invite link again.">
-            <Link href="/auth"><Button className="w-full">Sign in / Create account</Button></Link>
+          <Card title="Sign in to join this ceremony" body="Sign in or create a free account. We’ll bring you back to this invitation so you can accept it.">
+            <Link href={`/auth?returnTo=${encodeURIComponent(`/collab/accept/${token}`)}`}><Button className="w-full">Sign in / Create account</Button></Link>
           </Card>
         ) : phase in shells ? (
           <Card title={shells[phase as keyof typeof shells].title} body={shells[phase as keyof typeof shells].body}>
@@ -159,11 +166,12 @@ export function AcceptClient({ token }: { token: string }) {
               )}
             </p>
             <p className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-              You&apos;ll share core planning — timeline, guests, tasks and seating.{' '}
+              You&apos;ll share core planning — timeline, tasks, and seating. Guest details{' '}
+              {invite.shareGuests === true ? 'are included' : 'stay private'}; gift records{' '}
+              {invite.shareGifts === true ? 'are included' : 'stay private'}.{' '}
               {invite.shareBudget === true
-                ? 'This invitation also includes budget access; vendor pricing stays private unless the host opens it.'
-                : 'Budget and vendor pricing stay private unless the host opens them.'}{' '}
-              Gift records always stay with the host.
+                ? 'Budget access is included; vendor pricing stays private unless the host opens it.'
+                : 'Budget and vendor pricing stay private unless the host opens them.'}
             </p>
             <Button
               onClick={async () => {

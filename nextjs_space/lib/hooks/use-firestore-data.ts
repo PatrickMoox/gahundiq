@@ -123,31 +123,32 @@ export function useBudget(eventId: string, enabled = true) {
   return { items: result.items, loading: result.loading, addItem: result.addItem, updateItem: result.updateItem, deleteItem: result.deleteItem };
 }
 
-export function useGuests(eventId: string) {
-  const result = useCollection<GuestData>(eventId, 'guests');
+export function useGuests(eventId: string, enabled = true) {
+  const result = useCollection<GuestData>(eventId, 'guests', enabled);
   return { guests: result.items, loading: result.loading, addGuest: result.addItem, updateGuest: result.updateItem, deleteGuest: result.deleteItem };
 }
 
 /** Live list of digital invitations for an event (host view). */
-export function useEventInvites(eventId: string) {
+export function useEventInvites(eventId: string, enabled = true) {
   const { user } = useAuth();
   const [invites, setInvites] = useState<InviteData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const db = getFirestoreClient();
-    if (!db || !user || !eventId) { setInvites([]); setLoading(false); return; }
+    if (!enabled || !db || !user || !eventId) { setInvites([]); setLoading(false); return; }
+    setLoading(true);
     return onSnapshot(collection(db, 'events', eventId, 'invites'), (snapshot) => {
       setInvites(snapshot.docs.map((item) => normalize(item.id, item.data()) as unknown as InviteData));
       setLoading(false);
     }, () => { setInvites([]); setLoading(false); });
-  }, [eventId, user]);
+  }, [enabled, eventId, user]);
 
   return { invites, loading };
 }
 
-export function useCashGifts(eventId: string) {
-  const result = useCollection<CashGift>(eventId, 'gifts');
+export function useCashGifts(eventId: string, enabled = true) {
+  const result = useCollection<CashGift>(eventId, 'gifts', enabled);
   const addGift = useCallback(async (gift: Partial<CashGift>) => {
     const db = getFirestoreClient();
     if (!db) throw new Error('Firestore is not configured.');

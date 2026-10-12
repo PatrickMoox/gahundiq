@@ -2,11 +2,11 @@ export type EventType = 'wedding' | 'birthday' | 'corporate' | 'memorial' | 'bab
 export type Tier = 'free' | 'premium';
 
 /**
- * Event sections a host can open/close per collaborator. Money sections
- * ('vendors', 'budget') are HIDDEN from collaborators by default — see
+ * Event sections a host can open/close per collaborator. Budget, vendor,
+ * guest, and gift data are hidden from collaborators by default — see
  * lib/collab.ts (client mirror) and firestore.rules (enforcement).
  */
-export type ShareableSection = 'timeline' | 'vendors' | 'guests' | 'seating' | 'tasks' | 'budget';
+export type ShareableSection = 'timeline' | 'vendors' | 'guests' | 'seating' | 'tasks' | 'budget' | 'gifts';
 /** uid → section → shared? Absent section falls back to the safe default. */
 export type CollaboratorAccess = Partial<Record<ShareableSection, boolean>>;
 
@@ -242,8 +242,10 @@ export interface CollabInvite {
   eventTitle?: string;
   invitedBy: string;
   invitedByName?: string;
-  /** Host may grant budget visibility and management on acceptance. */
+  /** Host may grant opt-in access when the invitation is accepted. */
   shareBudget?: boolean;
+  shareGuests?: boolean;
+  shareGifts?: boolean;
   status: 'pending' | 'accepted' | 'revoked';
   createdAt?: any;
   expiresAt?: any;

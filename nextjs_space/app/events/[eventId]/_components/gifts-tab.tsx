@@ -19,8 +19,8 @@ const QRCodeCanvas = dynamic(
 
 const GIFT_ICONS: Record<string, string> = { cash: '💝', honeymoon_fund: '🌴', charity: '🤝', experience: '🎭' };
 
-export function GiftsTab({ eventId, event }: { eventId: string; event: EventData | null }) {
-  const { gifts } = useCashGifts(eventId);
+export function GiftsTab({ eventId, event, canAccess = true }: { eventId: string; event: EventData | null; canAccess?: boolean }) {
+  const { gifts } = useCashGifts(eventId, canAccess);
   const currency = event?.currency;
   const [showQR, setShowQR] = useState(false);
 
