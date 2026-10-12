@@ -12,10 +12,11 @@ import {
 } from 'firebase/firestore';
 import { getFirestoreClient } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
+import { useSubscription } from '@/lib/hooks/use-subscription';
 import { toast } from 'sonner';
 import type { CollabInvite, EventData } from '@/types/firestore';
 import {
-  COLLAB_INVITE_TTL_MS, MAX_COLLABORATORS, MONEY_SECTIONS, SECTION_LABELS,
+  COLLAB_INVITE_TTL_MS, COLLABORATOR_LIMITS, getCollaboratorLimit, MONEY_SECTIONS, SECTION_LABELS,
   collabClaimId, collabInviteLink, generateCollabToken, isSectionShared,
 } from '@/lib/collab';
 import type { ShareableSection } from '@/types/firestore';
@@ -46,6 +47,8 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
   const [expandedUid, setExpandedUid] = useState<string | null>(null);
 
   const isHost = Boolean(user && event.hostId === user.uid);
+  const { subscription } = useSubscription(isHost ? event.hostId : null);
+  const collaboratorLimit = getCollaboratorLimit(subscription);
 
   useEffect(() => {
     const db = getFirestoreClient();
@@ -80,8 +83,8 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
   const createInvite = async () => {
     const db = getFirestoreClient();
     if (!db || !user) return;
-    if (collaborators.length >= MAX_COLLABORATORS) {
-      toast.error(`This event already has ${MAX_COLLABORATORS} collaborators.`);
+    if (collaborators.length >= collaboratorLimit) {
+      toast.error(`This ceremony has reached its limit of ${collaboratorLimit} accepted collaborator${collaboratorLimit === 1 ? '' : 's'} for the host's plan.`);
       return;
     }
     setCreating(true);
@@ -198,7 +201,7 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
         <div className="space-y-5">
           {/* Collaborators */}
           <div>
-            <p className="mb-2 text-sm font-medium">On this ceremony ({collaborators.length}/{MAX_COLLABORATORS})</p>
+            <p className="mb-2 text-sm font-medium">On this ceremony ({collaborators.length}/{collaboratorLimit} collaborators; host not counted)</p>
             {collaborators.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
                 No collaborators yet — create an invite link below.
@@ -274,6 +277,14 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
           {/* Invite creation (host only) */}
           {isHost && (
             <div>
+              <div className="mb-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">Collaborator limits per ceremony</p>
+                <p className="mt-1">
+                  Free: {COLLABORATOR_LIMITS.free}; Ceremony Pass: {COLLABORATOR_LIMITS.ceremonyPass}; Planner: {COLLABORATOR_LIMITS.planner}.
+                  The host is not counted. Only accepted collaborators use a slot; pending invite links do not.
+                  Joining another host&apos;s ceremony does not use your own ceremony allowance.
+                </p>
+              </div>
               <p className="mb-2 text-sm font-medium">Invite by link</p>
               <div className="mb-3 flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted/20 p-3">
                 <div>
@@ -289,7 +300,7 @@ export function CollaboratorModal({ open, onOpenChange, eventId, event }: Props)
                   aria-label="Allow this collaborator to view and manage the budget"
                 />
               </div>
-              <Button onClick={createInvite} disabled={creating || collaborators.length >= MAX_COLLABORATORS} className="w-full gap-2">
+              <Button onClick={createInvite} disabled={creating || collaborators.length >= collaboratorLimit} className="w-full gap-2">
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Create invite link
               </Button>
 

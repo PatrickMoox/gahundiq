@@ -13,14 +13,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 const fadeUp = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
 
 const PLANS = [
-  { name: 'Free', price: '$0', period: 'forever', desc: 'Explore the workspace before you commit', features: { events: '1 active ceremony', guests: 'Up to 25 guests', timeline: 'Up to 5 entries', vendors: 'Up to 5 vendors', seating: false, tasks: 'Up to 10 tasks', budget: 'Up to 5 items', gifts: false, coordinator: false, support: 'Community' } },
-  { name: 'Ceremony Pass', price: '$29', period: 'one-time', desc: 'Everything needed for one ceremony', popular: true, features: { events: '1 active ceremony', guests: 'Up to 250 guests', timeline: true, vendors: true, seating: true, tasks: true, budget: true, gifts: true, coordinator: true, support: 'Priority' } },
-  { name: 'Planner', price: '$39', period: '/month', desc: 'For professionals managing ceremonies year-round', features: { events: 'Up to 10 active ceremonies', guests: 'Up to 2,500 guests', timeline: true, vendors: true, seating: true, tasks: true, budget: true, gifts: true, coordinator: true, support: 'Priority' } },
+  { name: 'Free', price: '$0', period: 'forever', desc: 'Explore the workspace before you commit', features: { events: '1 active ceremony', guests: 'Up to 25 guests', collaborators: '1 collaborator', timeline: 'Up to 5 entries', vendors: 'Up to 5 vendors', seating: false, tasks: 'Up to 10 tasks', budget: 'Up to 5 items', gifts: false, coordinator: false, support: 'Community' } },
+  { name: 'Ceremony Pass', price: '$29', period: 'one-time', desc: 'Everything needed for one ceremony', popular: true, features: { events: '1 active ceremony', guests: 'Up to 250 guests', collaborators: '3 collaborators', timeline: true, vendors: true, seating: true, tasks: true, budget: true, gifts: true, coordinator: true, support: 'Priority' } },
+  { name: 'Planner', price: '$39', period: '/month', desc: 'For professionals managing ceremonies year-round', features: { events: 'Up to 10 active ceremonies', guests: 'Up to 2,500 guests', collaborators: '5 collaborators', timeline: true, vendors: true, seating: true, tasks: true, budget: true, gifts: true, coordinator: true, support: 'Priority' } },
 ];
 
 const FEATURE_ROWS = [
   { key: 'events', label: 'Active ceremonies' },
   { key: 'guests', label: 'Guest capacity' },
+  { key: 'collaborators', label: 'Collaborators per ceremony' },
   { key: 'timeline', label: 'Timeline Builder' },
   { key: 'vendors', label: 'Vendor Management' },
   { key: 'seating', label: 'Seating Chart Builder' },
@@ -157,6 +158,9 @@ export function PricingClient() {
                 </tbody>
               </table>
             </div>
+            <p className="mt-3 text-center text-xs text-muted-foreground">
+              Collaborator limits are per ceremony; the host does not count toward the limit. Only accepted collaborators count, and joining another host&apos;s ceremony does not use your own ceremony allowance.
+            </p>
           </motion.div>
         </motion.div>
       </div>

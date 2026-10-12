@@ -28,6 +28,29 @@ service cloud.firestore {
       return signedIn() && eventDoc(eventId).data.hostId == request.auth.uid;
     }
 
+    function hostHasActivePremium(eventData) {
+      let subscriptionPath = /databases/$(database)/documents/subscriptions/$(eventData.hostId);
+      return exists(subscriptionPath)
+        && get(subscriptionPath).data.get('tier', '') == 'premium'
+        && !(get(subscriptionPath).data.get('status', '') in ['canceled', 'past_due'])
+        && (get(subscriptionPath).data.get('currentPeriodEnd', null) == null
+          || (get(subscriptionPath).data.get('currentPeriodEnd', null) is timestamp
+            && get(subscriptionPath).data.get('currentPeriodEnd', null) > request.time));
+    }
+
+    function collaboratorLimit(eventData) {
+      let subscriptionPath = /databases/$(database)/documents/subscriptions/$(eventData.hostId);
+      return hostHasActivePremium(eventData)
+        ? (get(subscriptionPath).data.get('billingCycle', 'per_event') == 'monthly' ? 5 : 3)
+        : 1;
+    }
+
+    function hasCollaboratorSlot(eventId) {
+      let event = eventDoc(eventId).data;
+      let collaborators = event.get('collaboratorIds', []);
+      return collaborators is list && collaborators.size() < collaboratorLimit(event);
+    }
+
     function isEventCollaborator(eventId) {
       return signedIn()
         && 'collaboratorIds' in eventDoc(eventId).data
@@ -98,6 +121,14 @@ service cloud.firestore {
 
     function validCollaborators(data) {
       return !('collaboratorIds' in data) || data.collaboratorIds is list;
+    }
+
+    function hostOnlyRemovesCollaborators() {
+      let existing = resource.data.get('collaboratorIds', []);
+      let requested = request.resource.data.get('collaboratorIds', []);
+      return existing is list
+        && requested is list
+        && existing.hasAll(requested);
     }
 
     // Online invitation link (host-set external URL, e.g. Canva). Empty string
@@ -238,6 +269,7 @@ service cloud.firestore {
       allow update: if isAdmin() || (isEventHost(eventId)
         && request.resource.data.hostId == resource.data.hostId
         && validCollaborators(request.resource.data)
+        && hostOnlyRemovesCollaborators()
         && validEventPlanForUpdate()
         && validOnlineInvitation(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -257,6 +289,7 @@ service cloud.firestore {
             'collaboratorIds', 'collaboratorNames', 'collaboratorAccess', 'updatedAt'])
           && request.auth.uid in request.resource.data.get('collaboratorIds', [])
           && !(request.auth.uid in resource.data.get('collaboratorIds', []))
+          && hasCollaboratorSlot(eventId)
           && exists(/databases/$(database)/documents/collabClaims/$(eventId + '_' + request.auth.uid))
           && validCollaboratorSelfJoinAccess(eventId)
           // collaboratorNames may only GROW by exactly the caller's own key:
@@ -264,6 +297,10 @@ service cloud.firestore {
           // must be the caller's own (in keys) with a string display name.
           && request.resource.data.get('collaboratorNames', {}).keys().hasAll(
                resource.data.get('collaboratorNames', {}).keys())
+          && request.resource.data.get('collaboratorIds', []).hasAll(
+               resource.data.get('collaboratorIds', []))
+          && request.resource.data.get('collaboratorIds', []).size() <=
+               resource.data.get('collaboratorIds', []).size() + 1
           && request.resource.data.get('collaboratorNames', {}).keys().size() <=
                resource.data.get('collaboratorNames', {}).keys().size() + 1
           && request.auth.uid in request.resource.data.get('collaboratorNames', {}).keys()
@@ -353,6 +390,8 @@ service cloud.firestore {
       allow list: if isEventHost(resource.data.eventId);
       allow create: if signedIn()
         && isEventHost(request.resource.data.eventId)
+        && hasCollaboratorSlot(request.resource.data.eventId)
+        && !(request.auth.uid in eventDoc(request.resource.data.eventId).data.get('collaboratorIds', []))
         && request.resource.data.token == token
         && token.size() >= 32
         && request.resource.data.status == 'pending'
@@ -378,7 +417,9 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status', 'acceptedBy', 'acceptedAt', 'updatedAt'])
           && request.resource.data.status == 'accepted'
-          && request.resource.data.acceptedBy == request.auth.uid);
+          && request.resource.data.acceptedBy == request.auth.uid
+          && hasCollaboratorSlot(resource.data.eventId)
+          && !(request.auth.uid in eventDoc(resource.data.eventId).data.get('collaboratorIds', [])));
       allow delete: if isAdmin() || isEventHost(resource.data.eventId);
     }
 
@@ -400,6 +441,8 @@ service cloud.firestore {
         && (!('shareBudget' in request.resource.data)
           || request.resource.data.shareBudget is bool)
         && request.resource.data.keys().hasOnly(['eventId', 'uid', 'displayName', 'token', 'shareBudget', 'createdAt'])
+        && hasCollaboratorSlot(request.resource.data.eventId)
+        && !(request.auth.uid in eventDoc(request.resource.data.eventId).data.get('collaboratorIds', []))
         && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.status == 'accepted'
         && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.acceptedBy == request.auth.uid
         && getAfter(/databases/$(database)/documents/collabInvites/$(request.resource.data.token)).data.eventId == request.resource.data.eventId

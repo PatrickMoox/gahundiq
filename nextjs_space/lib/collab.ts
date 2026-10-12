@@ -16,7 +16,8 @@
 // ============================================================================
 
 import { v4 as uuidv4 } from 'uuid';
-import type { CollaboratorAccess, ShareableSection } from '@/types/firestore';
+import type { CollaboratorAccess, ShareableSection, Subscription } from '@/types/firestore';
+import { isSubscriptionActive } from '@/lib/plan-entitlements';
 
 // Re-exported so call sites can import section-sharing types from here.
 export type { CollaboratorAccess, ShareableSection };
@@ -24,8 +25,24 @@ export type { CollaboratorAccess, ShareableSection };
 /** How long an invite link stays valid after creation. */
 export const COLLAB_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-/** Hard cap on collaborators per event — keeps the capacity model sane. */
-export const MAX_COLLABORATORS = 5;
+/** Accepted collaborators per ceremony, determined by the host's active plan. */
+export const COLLABORATOR_LIMITS = {
+  free: 1,
+  ceremonyPass: 3,
+  planner: 5,
+} as const;
+
+/** Absolute ceiling across all plans. */
+export const MAX_COLLABORATORS = COLLABORATOR_LIMITS.planner;
+
+export function getCollaboratorLimit(
+  subscription: Pick<Subscription, 'tier' | 'status' | 'currentPeriodEnd' | 'billingCycle'> | null | undefined,
+): number {
+  if (!subscription || !isSubscriptionActive(subscription)) return COLLABORATOR_LIMITS.free;
+  return subscription.billingCycle === 'monthly'
+    ? COLLABORATOR_LIMITS.planner
+    : COLLABORATOR_LIMITS.ceremonyPass;
+}
 
 // ── Phase 1.5: section sharing (host controls what collaborators see) ──────
 
