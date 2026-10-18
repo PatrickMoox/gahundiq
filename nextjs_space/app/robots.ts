@@ -23,8 +23,7 @@ export default function robots(): MetadataRoute.Robots {
 
   return {
     rules: [{ userAgent: '*', allow: '/', disallow: DISALLOW }],
-    // Emitted only when the deploy knows its public URL (see Dockerfile /
-    // cloudbuild.yaml — NEXT_PUBLIC_SITE_URL is baked in at build time).
+    // Emitted only when NEXT_PUBLIC_SITE_URL is configured for the deployment.
     ...(base ? { host: base, sitemap: `${base}/sitemap.xml` } : {}),
   };
 }

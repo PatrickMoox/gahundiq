@@ -20,7 +20,7 @@ through **capability links** and never need an account.
 | UI/UX | framer-motion, recharts, lucide-react, sonner (toasts), next-themes (dark default) |
 | Extras | qrcode.react, html2canvas, canvas-confetti, uuid |
 | Server-side | Firebase Admin 14 — **devDependency, used only by `scripts/`** |
-| Deploy | Google Cloud Run (standalone Next output) — see `DEPLOY-GCP.md` |
+| Deploy | Vercel |
 
 ## Architecture — read this before changing anything
 
@@ -28,8 +28,8 @@ through **capability links** and never need an account.
    There is no API layer for domain data. The **security boundary is
    `firestore.rules` + `storage.rules`**, not the UI. A feature that looks
    "hidden" in the UI is not protected unless the rules deny it.
-2. **Exactly one server route exists:** `app/api/health/route.ts` (Cloud Run
-   health probe). No server-side secrets are needed at runtime.
+2. Server API routes provide health checks and event operations. No
+   server-side secrets are needed at runtime.
 3. `firebase-admin` and the service-account key are **build/ops-time only**
    (`scripts/set-admin-claim.ts`). Nothing in the running app holds admin
    credentials.
@@ -91,7 +91,7 @@ to `/dashboard`. Capability links (`/invite`, `/gift`, `/vendor-pass`,
 ```
 app/                      routes (pages are server shells; *_client.tsx holds the UI)
   events/[eventId]/_components/   one tab component per feature
-  api/health/route.ts     the only route handler
+  api/                    server API routes (health, event operations)
 components/                app-level components (navbar, modals, gates)
 components/ui/             shadcn/ui primitives — extend these, don't fork them
 lib/                       firebase init, auth context, hooks/, entitlements, helpers
@@ -99,7 +99,7 @@ lib/hooks/                 use-firestore-data, use-subscription
 types/firestore.ts         shared document types
 firestore.rules            ← the real security boundary
 storage.rules              ← ditto, for uploads
-scripts/                   ops tooling (admin claims, Cloud Run deploy)
+scripts/                   ops tooling (admin claims)
 ```
 Import alias: `@/*` → project root.
 
@@ -139,8 +139,8 @@ features just stay empty. Handy for pure UI work without credentials.
 | `SERVICE_ACCOUNT_KEY_PATH` | no | Ops scripts only. Unset → `scripts/serviceAccountKey.json` (gitignored). |
 | `STRIPE_*`, `NEXT_PUBLIC_STRIPE_*`, `TWILIO_*`, `GEMINI_API_KEY` | — | **Not implemented.** No code reads them; leave empty. |
 
-`NEXT_DIST_DIR` / `NEXT_OUTPUT_MODE` can redirect the build output, and
-`next.config.user.json` allows boolean `trailingSlash` /
+`NEXT_DIST_DIR` can redirect the build output, and `next.config.user.json`
+allows boolean `trailingSlash` /
 `skipTrailingSlashRedirect` overrides.
 
 ## Conventions
@@ -165,19 +165,14 @@ features just stay empty. Handy for pure UI work without credentials.
 | --- | --- |
 | `AUDIT.md` | Security / engineering audit — findings, fixes, open items |
 | `STYLE_GUIDE.md` | UI, accessibility and file-layout conventions |
-| `DEPLOY-GCP.md` | Cloud Run deployment (Docker, Cloud Build, Artifact Registry) |
-| `DEPLOY.md` | Firebase Hosting / alternate deploy notes |
 
-## Deploy (Cloud Run)
+## Deploy (Vercel)
 
-```bash
-GCP_PROJECT=<your-project> bash scripts/gcp-deploy.sh
-```
-
-Builds from `Dockerfile` (standalone output, non-root `node` user, telemetry
-off), pushes to Artifact Registry, deploys to Cloud Run on port 8080 with the
-`/api/health` probe, and prints the verification command. `cloudbuild.yaml` does
-the same in CI — see `DEPLOY-GCP.md`.
+Connect the Git repository to Vercel and deploy with the default Next.js
+framework settings. Add the `NEXT_PUBLIC_FIREBASE_*` variables from
+`.env.example` and set `NEXT_PUBLIC_SITE_URL` to the production URL in the
+Vercel project settings. Vercel will build and deploy on pushes to the
+configured production branch.
 
 ## Known limitations
 

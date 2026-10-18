@@ -2,6 +2,11 @@
 
 **Date:** 2026-09-19 · **Commit:** `69ea33e` (main) + local WIP · **Auditor pass:** full source review
 
+**Deployment note:** This audit records the earlier Google Cloud Run setup.
+Cloud Run and Firebase Hosting deployment files have since been removed; the
+deployment-specific findings and validation below are historical. Firebase
+security rules and application-side health/security features remain in use.
+
 ## Scope reviewed
 
 - **Stack:** Next.js 16 (App Router) · React 19 · TypeScript (strict) · Firebase (Auth, Firestore, Storage client SDK) · Tailwind · Radix UI · Recharts · Framer Motion

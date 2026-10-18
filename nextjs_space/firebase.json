@@ -1,20 +1,4 @@
 {
-  "hosting": {
-    "source": ".",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**",
-      "**/tsconfig.tsbuildinfo",
-      "**/STYLE_GUIDE.md",
-      "**/docs/**"
-    ],
-    "frameworksBackend": {
-      "region": "us-central1",
-      "maxInstances": 100,
-      "minInstances": 0
-    }
-  },
   "firestore": {
     "rules": "firestore.rules"
   },
@@ -22,4 +6,3 @@
     "rules": "storage.rules"
   }
 }
-

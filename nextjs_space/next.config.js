@@ -1,15 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  output: process.env.NEXT_OUTPUT_MODE,
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   typescript: {
     ignoreBuildErrors: false,
   },
-  // Production HTTP hardening (served by `next start` / the standalone server on
-  // Cloud Run). COOP and CSP are deliberately absent: Firebase Auth's popup flow
-  // needs the popup to keep its opener reference, and a CSP would have to
+  // Production HTTP hardening. COOP and CSP are deliberately absent: Firebase
+  // Auth's popup flow needs its opener reference, and a CSP would have to
   // whitelist Firebase's auth/analytics endpoints — both are follow-ups that
   // need real-browser testing, not blind defaults.
   // No Cache-Control override for /_next/static: Next already serves those
