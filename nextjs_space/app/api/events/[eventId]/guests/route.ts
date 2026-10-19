@@ -1,5 +1,6 @@
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { verifyAppSession } from '@/lib/app-session';
+import { getFirebaseAdminApp } from '@/lib/firebase-admin';
 import { getGuestLimit } from '@/lib/plan-entitlements';
 import type { Subscription } from '@/types/firestore';
 
@@ -49,7 +50,7 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
     return errorResponse('RSVP status is invalid.', 400);
   }
 
-  const db = getFirestore();
+  const db = getFirestore(getFirebaseAdminApp());
   const eventRef = db.doc(`events/${eventId}`);
   const guestCollection = eventRef.collection('guests');
   const guestRef = guestCollection.doc();
@@ -119,7 +120,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ even
   const guestId = new URL(request.url).searchParams.get('guestId');
   if (!guestId || guestId.includes('/')) return errorResponse('Guest ID is invalid.', 400);
 
-  const db = getFirestore();
+  const db = getFirestore(getFirebaseAdminApp());
   const eventRef = db.doc(`events/${eventId}`);
   const guestRef = eventRef.collection('guests').doc(guestId);
   const isAdmin = user.admin === true || (await db.doc(`admin/${user.uid}`).get()).exists;

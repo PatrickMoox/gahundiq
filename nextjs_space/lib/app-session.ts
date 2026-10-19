@@ -1,13 +1,13 @@
-import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getFirebaseAdminApp } from '@/lib/firebase-admin';
 import { isSessionActive } from '@/lib/session-policy';
 
 export async function verifyAppSession(request: Request): Promise<DecodedIdToken | null> {
   const token = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return null;
 
-  const app = getApps().length ? getApp() : initializeApp();
+  const app = getFirebaseAdminApp();
   let decoded: DecodedIdToken;
   try {
     decoded = await getAuth(app).verifyIdToken(token);

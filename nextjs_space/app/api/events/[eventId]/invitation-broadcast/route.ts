@@ -1,5 +1,5 @@
-import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { getFirebaseAdminApp } from '@/lib/firebase-admin';
 import { FREE_LIMITS, PAID_LIMITS } from '@/lib/plan-entitlements';
 import { verifyAppSession } from '@/lib/app-session';
 
@@ -15,7 +15,7 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
     const tokenMatch = (request.headers.get('authorization') ?? '').match(/^Bearer (.+)$/);
     if (!tokenMatch) return errorResponse('Sign in to record a broadcast.', 401);
 
-    const app = getApps().length ? getApp() : initializeApp();
+    const app = getFirebaseAdminApp();
     const activeSessionUser = await verifyAppSession(request);
     if (!activeSessionUser) return errorResponse('Your app session is invalid or expired. Please sign in again.', 401);
     const user = activeSessionUser;

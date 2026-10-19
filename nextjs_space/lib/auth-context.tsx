@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { GoogleAuthProvider, createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithCustomToken, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut as firebaseSignOut, updateProfile, type User } from 'firebase/auth';
+import { GoogleAuthProvider, createUserWithEmailAndPassword, onIdTokenChanged, sendEmailVerification, sendPasswordResetEmail, signInWithCustomToken, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut as firebaseSignOut, updateProfile, type User } from 'firebase/auth';
 import { doc, getDocFromServer, onSnapshot } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { getAuthClient, getFirestoreClient } from '@/lib/firebase';
@@ -337,7 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     activateRef.current = activate;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribeAuth = onIdTokenChanged(auth, (firebaseUser) => {
       unsubAdminDoc?.();
       unsubAdminDoc = null;
       stopPolling();

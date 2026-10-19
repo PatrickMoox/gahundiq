@@ -1,5 +1,5 @@
-import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { getFirebaseAdminApp } from '@/lib/firebase-admin';
 import { verifyAppSession } from '@/lib/app-session';
 import { FREE_LIMITS } from '@/lib/plan-entitlements';
 
@@ -112,7 +112,7 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
     const tokenMatch = authorization.match(/^Bearer (.+)$/);
     if (!tokenMatch) throw new RequestError('Sign in to add this item.', 401);
 
-    const app = getApps().length ? getApp() : initializeApp();
+    const app = getFirebaseAdminApp();
     const db = getFirestore(app);
     const activeSessionUser = await verifyAppSession(request);
     if (!activeSessionUser) throw new RequestError('Your app session is invalid or expired. Please sign in again.', 401);

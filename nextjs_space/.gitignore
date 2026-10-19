@@ -1,6 +1,8 @@
 # Secrets — never commit
 scripts/serviceAccountKey.json
 *.serviceAccountKey.json
+*-firebase-adminsdk-*.json
+._*-firebase-adminsdk-*.json
 .env
 .env.local
 .env*.local

@@ -136,7 +136,8 @@ features just stay empty. Handy for pure UI work without credentials.
 | --- | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | in production | OG metadata, `sitemap.xml`, `robots.txt`. Falls back to `http://localhost:3000`. |
 | `NEXT_PUBLIC_FIREBASE_*` (8) | yes | Public web config — see `.env.example`. |
-| `SERVICE_ACCOUNT_KEY_PATH` | no | Ops scripts only. Unset → `scripts/serviceAccountKey.json` (gitignored). |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | yes in production | Server-only Firebase Admin service-account JSON, required for session management and event API routes. Add as a secret environment variable; never prefix with `NEXT_PUBLIC_`. Locally, save the key as `scripts/serviceAccountKey.json` (gitignored), set `GOOGLE_APPLICATION_CREDENTIALS` to its path, or configure Google ADC with `gcloud auth application-default login`. For ADC token signing, set `FIREBASE_SERVICE_ACCOUNT_EMAIL` and grant the ADC identity Service Account Token Creator on that account. |
+| `SERVICE_ACCOUNT_KEY_PATH` | no | Admin-claim ops script only. Unset → `scripts/serviceAccountKey.json` (gitignored). |
 | `STRIPE_*`, `NEXT_PUBLIC_STRIPE_*`, `TWILIO_*`, `GEMINI_API_KEY` | — | **Not implemented.** No code reads them; leave empty. |
 
 `NEXT_DIST_DIR` can redirect the build output, and `next.config.user.json`

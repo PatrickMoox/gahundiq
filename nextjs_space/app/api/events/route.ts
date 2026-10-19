@@ -1,5 +1,6 @@
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { verifyAppSession } from '@/lib/app-session';
+import { getFirebaseAdminApp } from '@/lib/firebase-admin';
 import { FREE_LIMITS, PAID_LIMITS, getGuestLimit, isSubscriptionActive } from '@/lib/plan-entitlements';
 import { CURRENCIES } from '@/lib/currency';
 import type { Subscription } from '@/types/firestore';
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
   const ceremonyDate = body.date as string | null;
   const currency = body.currency;
 
-  const db = getFirestore();
+  const db = getFirestore(getFirebaseAdminApp());
   const admin = user.admin === true || (await db.doc(`admin/${user.uid}`).get()).exists;
   const subscriptionRef = db.doc(`subscriptions/${user.uid}`);
   const userEventLockRef = db.doc(`_eventCreationLocks/${user.uid}`);
