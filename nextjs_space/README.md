@@ -19,20 +19,22 @@ through **capability links** and never need an account.
 | Data / auth | Firebase JS SDK **12** — Auth, Firestore, Storage, Analytics |
 | UI/UX | framer-motion, recharts, lucide-react, sonner (toasts), next-themes (dark default) |
 | Extras | qrcode.react, html2canvas, canvas-confetti, uuid |
-| Server-side | Firebase Admin 14 — **devDependency, used only by `scripts/`** |
+| Server-side | Firebase Admin 14 — event API routes and ops scripts |
 | Deploy | Vercel |
 
 ## Architecture — read this before changing anything
 
-1. **All data access happens in the browser** through the Firebase web SDK.
-   There is no API layer for domain data. The **security boundary is
-   `firestore.rules` + `storage.rules`**, not the UI. A feature that looks
-   "hidden" in the UI is not protected unless the rules deny it.
-2. Server API routes provide health checks and event operations. No
-   server-side secrets are needed at runtime.
-3. `firebase-admin` and the service-account key are **build/ops-time only**
-   (`scripts/set-admin-claim.ts`). Nothing in the running app holds admin
-   credentials.
+1. **Most data access happens in the browser** through the Firebase web SDK.
+   Event creation and selected guest/planning operations use server API routes.
+   The **security boundary is `firestore.rules` + `storage.rules`** for client
+   access, and explicit ID-token verification plus server-side authorization
+   checks for API operations—not the UI.
+2. Server API routes provide health checks and event operations. They verify
+   Firebase Auth ID tokens and use Firebase Admin for privileged Firestore
+   operations.
+3. Browser sign-in uses Firebase Authentication directly; user profile data is
+   stored in `users/{uid}`. The Admin SDK is not part of the login flow, but
+   production API routes need server-side Firebase Admin credentials.
 4. **Admin access is a custom claim** (`request.auth.token.admin == true`),
    granted by `npx tsx scripts/set-admin-claim.ts`; the Firestore admin
    registry is also supported for bootstrapping and console role management.
@@ -49,10 +51,10 @@ through **capability links** and never need an account.
    `components/ceremony-addon-modal.tsx` refuses to simulate a purchase rather
    than faking a success.
 8. **One owner for signed-out routing.** `AuthProvider` (`lib/auth-context.tsx`)
-   redirects any path in `PROTECTED_ROUTE_PREFIXES` (`isProtectedPath`) the
-   moment a session ends — sign-out, idle timeout, expiry, a revoke from another
-   device, an admin action, or a password reset done elsewhere. Those all funnel
-   through the auth listener and surface as `loading === false && user === null`.
+   redirects any path in `PROTECTED_ROUTE_PREFIXES` (`isProtectedPath`) when
+   Firebase Auth reports a signed-out identity — sign-out, token invalidation,
+   or a password reset done elsewhere. Those funnel through the auth listener
+   and surface as `loading === false && user === null`.
    The visitor lands on `/` (or `/auth` if the account is awaiting email
    verification, since `/auth` owns that panel).
    **Pages must not add their own auth redirects** — competing redirects are
@@ -136,7 +138,7 @@ features just stay empty. Handy for pure UI work without credentials.
 | --- | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | in production | OG metadata, `sitemap.xml`, `robots.txt`. Falls back to `http://localhost:3000`. |
 | `NEXT_PUBLIC_FIREBASE_*` (8) | yes | Public web config — see `.env.example`. |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | yes in production | Server-only Firebase Admin service-account JSON, required for session management and event API routes. Add as a secret environment variable; never prefix with `NEXT_PUBLIC_`. Locally, save the key as `scripts/serviceAccountKey.json` (gitignored), set `GOOGLE_APPLICATION_CREDENTIALS` to its path, or configure Google ADC with `gcloud auth application-default login`. For ADC token signing, set `FIREBASE_SERVICE_ACCOUNT_EMAIL` and grant the ADC identity Service Account Token Creator on that account. |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | yes in production | Server-only Firebase Admin service-account JSON, required by event API routes (not browser login). Add as a secret environment variable; never prefix with `NEXT_PUBLIC_`. Locally, save the key as `scripts/serviceAccountKey.json` (gitignored), set `GOOGLE_APPLICATION_CREDENTIALS` to its path, or configure Google ADC with `gcloud auth application-default login`. |
 | `SERVICE_ACCOUNT_KEY_PATH` | no | Admin-claim ops script only. Unset → `scripts/serviceAccountKey.json` (gitignored). |
 | `STRIPE_*`, `NEXT_PUBLIC_STRIPE_*`, `TWILIO_*`, `GEMINI_API_KEY` | — | **Not implemented.** No code reads them; leave empty. |
 

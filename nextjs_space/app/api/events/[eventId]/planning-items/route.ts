@@ -1,6 +1,6 @@
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getFirebaseAdminApp } from '@/lib/firebase-admin';
-import { verifyAppSession } from '@/lib/app-session';
+import { verifyFirebaseUser } from '@/lib/firebase-user';
 import { FREE_LIMITS } from '@/lib/plan-entitlements';
 
 export const runtime = 'nodejs';
@@ -114,9 +114,8 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
 
     const app = getFirebaseAdminApp();
     const db = getFirestore(app);
-    const activeSessionUser = await verifyAppSession(request);
-    if (!activeSessionUser) throw new RequestError('Your app session is invalid or expired. Please sign in again.', 401);
-    const decodedToken = activeSessionUser;
+    const decodedToken = await verifyFirebaseUser(request);
+    if (!decodedToken) throw new RequestError('Your sign-in token is invalid or expired. Please sign in again.', 401);
     const isAdmin = decodedToken.admin === true
       || (await db.doc(`admin/${decodedToken.uid}`).get()).exists;
 

@@ -4,23 +4,12 @@ service firebase.storage {
     // Storage mirrors Firestore's admin definition so platform admins can
     // investigate and repair user uploads. The admin registry supports
     // console-bootstrapped and UI-granted admins as well as custom claims.
-    function hasActiveAppSession() {
-      return request.auth != null
-        && request.auth.token.get('appSessionId', null) is string
-        && request.auth.token.get('appSessionNonce', null) is string
-        && firestore.get(/databases/(default)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.uid == request.auth.uid
-        && firestore.get(/databases/(default)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.deviceId == request.auth.token.appSessionId
-        && firestore.get(/databases/(default)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.sessionNonce == request.auth.token.appSessionNonce
-        && firestore.get(/databases/(default)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.get('revokedAt', null) == null
-        && firestore.get(/databases/(default)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.get('signedOutAt', null) == null
-        && firestore.get(/databases/(default)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.expiresAt is timestamp
-        && firestore.get(/databases/(default)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.lastActiveAt is timestamp
-        && request.time < firestore.get(/databases/(default)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.expiresAt
-        && request.time < firestore.get(/databases/(default)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.lastActiveAt + duration.value(35, 'm');
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
     }
 
     function isAdmin() {
-      return hasActiveAppSession()
+      return signedIn()
         && (request.auth.token.admin == true
           || firestore.get(/databases/(default)/documents/admin/$(request.auth.uid)).data != null);
     }
@@ -34,13 +23,13 @@ service firebase.storage {
     match /invitations/{eventId}/{filename} {
       allow read: if true;
 
-      allow create: if hasActiveAppSession()
+      allow create: if signedIn()
         && firestore.get(/databases/(default)/documents/events/$(eventId)).data.hostId == request.auth.uid
         && request.metadata.hostId == request.auth.uid
         && request.resource.size < 10 * 1024 * 1024; // 10 MB max
 
       // On update/delete: only the original owner (stored in metadata) can modify
-      allow update, delete: if hasActiveAppSession()
+      allow update, delete: if signedIn()
         && resource.metadata.hostId == request.auth.uid;
     }
 
@@ -48,11 +37,11 @@ service firebase.storage {
     // Same cross-service host verification as /invitations above.
     match /covers/{eventId}/{filename} {
       allow read: if true;
-      allow create: if hasActiveAppSession()
+      allow create: if signedIn()
         && firestore.get(/databases/(default)/documents/events/$(eventId)).data.hostId == request.auth.uid
         && request.metadata.hostId == request.auth.uid
         && request.resource.size < 10 * 1024 * 1024;
-      allow update, delete: if hasActiveAppSession()
+      allow update, delete: if signedIn()
         && resource.metadata.hostId == request.auth.uid;
     }
 

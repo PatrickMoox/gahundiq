@@ -1,5 +1,5 @@
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
-import { verifyAppSession } from '@/lib/app-session';
+import { verifyFirebaseUser } from '@/lib/firebase-user';
 import { getFirebaseAdminApp } from '@/lib/firebase-admin';
 import { getGuestLimit } from '@/lib/plan-entitlements';
 import type { Subscription } from '@/types/firestore';
@@ -11,7 +11,7 @@ function errorResponse(message: string, status: number) {
 }
 
 async function authenticate(request: Request) {
-  return verifyAppSession(request);
+  return verifyFirebaseUser(request);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -19,8 +19,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function POST(request: Request, context: { params: Promise<{ eventId: string }> }) {
-  const user = await verifyAppSession(request);
-  if (!user) return errorResponse('Your app session is invalid or expired. Please sign in again.', 401);
+  const user = await verifyFirebaseUser(request);
+  if (!user) return errorResponse('Your sign-in token is invalid or expired. Please sign in again.', 401);
   const { eventId } = await context.params;
 
   let body: unknown;

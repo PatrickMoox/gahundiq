@@ -2,24 +2,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function hasActiveAppSession() {
-      return request.auth != null
-        && request.auth.token.get('appSessionId', null) is string
-        && request.auth.token.get('appSessionNonce', null) is string
-        && exists(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId))
-        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.uid == request.auth.uid
-        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.deviceId == request.auth.token.appSessionId
-        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.sessionNonce == request.auth.token.appSessionNonce
-        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.get('revokedAt', null) == null
-        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.get('signedOutAt', null) == null
-        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.expiresAt is timestamp
-        && get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.lastActiveAt is timestamp
-        && request.time < get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.expiresAt
-        && request.time < get(/databases/$(database)/documents/sessions/$(request.auth.uid)/devices/$(request.auth.token.appSessionId)).data.lastActiveAt + duration.value(35, 'm');
-    }
-
     function signedIn() {
-      return hasActiveAppSession();
+      return request.auth != null && request.auth.token.email_verified == true;
     }
 
     // Admin = custom claim `admin: true` (set via Admin SDK) OR membership in
@@ -255,17 +239,6 @@ service cloud.firestore {
 
     match /admin/{document=**} {
       allow read, write: if isAdmin();
-    }
-
-    // Session records are managed only by the trusted session API. A device
-    // can read its own record to observe revocation, but cannot alter it.
-    match /sessions/{userId}/devices/{sessionId} {
-      allow read: if isAdmin()
-        || (request.auth != null
-          && request.auth.uid == userId
-          && request.auth.token.get('appSessionId', null) == sessionId
-          && request.auth.token.get('appSessionNonce', null) == resource.data.sessionNonce);
-      allow write: if false;
     }
 
     // Billing state and add-on entitlements are admin-managed or written by

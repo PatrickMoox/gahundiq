@@ -2,32 +2,9 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { GoogleAuthProvider, createUserWithEmailAndPassword, onIdTokenChanged, sendEmailVerification, sendPasswordResetEmail, signInWithCustomToken, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut as firebaseSignOut, updateProfile, type User } from 'firebase/auth';
-import { doc, getDocFromServer, onSnapshot } from 'firebase/firestore';
-import { toast } from 'sonner';
+import { GoogleAuthProvider, createUserWithEmailAndPassword, onIdTokenChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut as firebaseSignOut, updateProfile, type User } from 'firebase/auth';
+import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getAuthClient, getFirestoreClient } from '@/lib/firebase';
-import { SESSION_POLICY, classifyDeviceLabel, getOrCreateDeviceId, isSessionActive, tsToMs } from '@/lib/session-policy';
-
-async function requestSessionAction(
-  firebaseUser: User,
-  action: 'start' | 'heartbeat' | 'revoke',
-  details: Record<string, unknown> = {},
-): Promise<{ customToken?: string }> {
-  const idToken = await firebaseUser.getIdToken();
-  const response = await fetch('/api/auth/session', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, ...details }),
-  });
-  const result: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message = result && typeof result === 'object' && 'message' in result
-      && typeof result.message === 'string' ? result.message : 'Could not verify your session.';
-    throw new Error(message);
-  }
-  if (!result || typeof result !== 'object') throw new Error('Invalid session response.');
-  return result as { customToken?: string };
-}
 
 interface AuthUser {
   uid: string;
@@ -95,244 +72,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // that lives inside the auth-state effect.
   const activateRef = useRef<((firebaseUser: User) => Promise<void>) | null>(null);
 
-  // ── Session governance state (see lib/session-policy.ts) ──────────
-  const sessionRefRef = useRef<any>(null);         // sessions/{uid}/devices/{deviceId} ref
-  const sessionReadyRef = useRef(false);           // our live session doc exists
-  const localSignOutRef = useRef(false);           // sign-out initiated on THIS device
-  const endingRef = useRef(false);                 // forced sign-out already in flight
-  const lastHeartbeatAtRef = useRef(0);            // ms of last successful activity write
-  const expiresAtRef = useRef(0);                  // ms absolute-lifetime ceiling
-
   useEffect(() => {
     const auth = getAuthClient();
     if (!auth) { setLoading(false); return; }
 
     let unsubAdminDoc: (() => void) | null = null;
-    let unsubSession: (() => void) | null = null;
-    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    let unsubProfile: (() => void) | null = null;
     let claimAdmin = false;
     let registryAdmin = false;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
-    let heartbeatFailureCount = 0;
-    let heartbeatWarningShown = false;
-    let heartbeatWritePending = false;
-    let bootstrappedUid: string | null = null;
 
     const stopPolling = () => {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     };
 
-    const stopHeartbeat = () => {
-      if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
-    };
-
-    const clearSessionWatch = () => {
-      if (unsubSession) { unsubSession(); unsubSession = null; }
-    };
-
-    const emit = (firebaseUser: User) => {
+    const emit = (firebaseUser: User, profile: Record<string, unknown> = {}) => {
       setUser({
         uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        displayName: firebaseUser.displayName,
-        photoURL: firebaseUser.photoURL,
+        email: typeof profile.email === 'string' ? profile.email : firebaseUser.email,
+        displayName: typeof profile.displayName === 'string' ? profile.displayName : firebaseUser.displayName,
+        photoURL: typeof profile.photoURL === 'string' ? profile.photoURL : firebaseUser.photoURL,
         role: claimAdmin || registryAdmin ? 'admin' : 'user',
         emailVerified: firebaseUser.emailVerified,
       });
       setLoading(false);
     };
 
-    // ── Session governance engine (policy: lib/session-policy.ts) ────
-    // Force-sign-out: revoke the server-managed session, then sign out locally.
-    const forceSignOut = (reason: string) => {
-      if (endingRef.current || localSignOutRef.current) return;
-      endingRef.current = true;
-      toast.warning(reason);
-      const auth = getAuthClient();
-      const currentUser = auth?.currentUser;
-      if (currentUser && sessionReadyRef.current) {
-        void requestSessionAction(currentUser, 'revoke').catch((error) => {
-          console.error('Could not revoke the app session:', error);
-        });
-      }
-      if (auth) void firebaseSignOut(auth);
-    };
-
-    // Live watch on THIS device's session doc. The moment anyone marks it
-    // revoked/ended elsewhere (cap eviction, "sign out everywhere", admin
-    // support), we sign out locally. Reacts only to explicit end flags so the
-    // first-creation snapshot race can never misfire.
-    const watchSession = (ref: any) => {
-      clearSessionWatch();
-      unsubSession = onSnapshot(ref, (snap: any) => {
-        if (!snap.exists()) {
-          if (sessionReadyRef.current) forceSignOut('Your session was ended on another device.');
-          return;
-        }
-        const record = snap.data();
-        // Multi-tab device sync: activity is DEVICE-level, not tab-level. When
-        // a sibling tab on this device refreshes lastActiveAt (its heartbeat
-        // runs while visible), adopt the newer timestamp so THIS tab's idle
-        // check does not force-sign-out an actively used device (a hidden tab
-        // still ticks every minute and would otherwise idle out after 35 min
-        // even though another tab keeps the session alive).
-        if (record?.revokedAt == null && record?.signedOutAt == null) {
-          const sharedLastActive = tsToMs(record?.lastActiveAt);
-          if (sharedLastActive > lastHeartbeatAtRef.current) lastHeartbeatAtRef.current = sharedLastActive;
-        }
-        if (sessionReadyRef.current && (record?.revokedAt != null || record?.signedOutAt != null)) {
-          forceSignOut('You were signed out on this device.');
-        }
-      }, (error) => {
-        console.error('Session status could not be monitored:', error);
-        forceSignOut('Could not verify your session. Please check your connection and sign in again.');
-      });
-    };
-
-    // Exchanges a provider-authenticated identity for a server-issued token
-    // bound to the server-managed session record. Provider tokens are never
-    // admitted to protected Firestore data directly.
-    const ensureSession = async (firebaseUser: User): Promise<boolean> => {
-      const token = await firebaseUser.getIdTokenResult();
-      const sessionId = token.claims.appSessionId;
-      const nonce = token.claims.appSessionNonce;
-      if (typeof sessionId !== 'string' || typeof nonce !== 'string') {
-        if (bootstrappedUid === firebaseUser.uid) return false;
-        bootstrappedUid = firebaseUser.uid;
-        try {
-          await firebaseUser.getIdToken(true);
-          const result = await requestSessionAction(firebaseUser, 'start', {
-            deviceId: getOrCreateDeviceId(),
-            deviceLabel: classifyDeviceLabel(typeof navigator === 'undefined' ? null : navigator.userAgent),
-            displayName: firebaseUser.displayName ?? '',
-            photoURL: firebaseUser.photoURL ?? null,
-          });
-          if (typeof result.customToken !== 'string' || !result.customToken) {
-            throw new Error('The session service did not return a session token.');
-          }
-          const auth = getAuthClient();
-          if (!auth) throw new Error('Firebase Authentication is not configured.');
-          await signInWithCustomToken(auth, result.customToken);
-        } catch (error) {
-          bootstrappedUid = null;
-          throw error;
-        }
-        return false;
-      }
-
-      const db = getFirestoreClient();
-      if (!db) throw new Error('Firestore is not configured.');
-      const ref = doc(db, 'sessions', firebaseUser.uid, 'devices', sessionId);
-      sessionRefRef.current = ref;
-      watchSession(ref);
-
-      try {
-        const existing = await getDocFromServer(ref);
-        const record = existing.data();
-        if (!existing.exists() || record?.sessionNonce !== nonce || !isSessionActive(record, Date.now())) {
-          throw new Error('The app session has expired or was revoked.');
-        }
-        expiresAtRef.current = tsToMs(record.expiresAt);
-        lastHeartbeatAtRef.current = tsToMs(record.lastActiveAt);
-        sessionReadyRef.current = true;
-        return true;
-      } catch (error) {
-        sessionReadyRef.current = false;
-        throw error;
-      }
-    };
-
-    // Visibility-aware heartbeat: refreshes lastActiveAt while visible and
-    // enforces the idle timeout + absolute lifetime locally.
-    const startHeartbeat = () => {
-      stopHeartbeat();
-      heartbeatTimer = setInterval(() => {
-        const auth = getAuthClient();
-        const currentUser = auth?.currentUser;
-        if (!currentUser || !sessionRefRef.current) return;
-        const now = Date.now();
-
-        // Absolute lifetime ceiling — a hard re-auth boundary.
-        if (expiresAtRef.current > 0 && now >= expiresAtRef.current) {
-          forceSignOut('Session expired — please sign in again.');
-          return;
-        }
-        // Idle timeout — heartbeat silent (tab hidden/away) too long.
-        if (now - lastHeartbeatAtRef.current > SESSION_POLICY.idleTimeoutMs + SESSION_POLICY.idleGraceMs) {
-          forceSignOut('Signed out after being inactive. Sign in to continue.');
-          return;
-        }
-        if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
-
-        if (!heartbeatWritePending
-          && now - lastHeartbeatAtRef.current >= SESSION_POLICY.heartbeatMs - 1000) {
-          heartbeatWritePending = true;
-          let timeoutId: ReturnType<typeof setTimeout> | undefined;
-          const timeoutError = new Error('Session heartbeat timed out.');
-          const timeout = new Promise<never>((_resolve, reject) => {
-            timeoutId = setTimeout(() => reject(timeoutError), SESSION_POLICY.heartbeatTimeoutMs);
-          });
-          Promise.race([
-            requestSessionAction(currentUser, 'heartbeat'),
-            timeout,
-          ])
-            .then(() => {
-              lastHeartbeatAtRef.current = Date.now();
-              heartbeatFailureCount = 0;
-              heartbeatWarningShown = false;
-            })
-            .catch((error) => {
-              console.error('Session heartbeat failed:', error);
-              heartbeatFailureCount += 1;
-              if (!heartbeatWarningShown) {
-                toast.warning('Could not verify your session activity. Retrying briefly.');
-                heartbeatWarningShown = true;
-              }
-              if (error === timeoutError) {
-                forceSignOut('Session verification timed out. Please check your connection and sign in again.');
-              } else if (heartbeatFailureCount >= SESSION_POLICY.heartbeatFailureLimit) {
-                forceSignOut('Could not verify your session. Please check your connection and sign in again.');
-              }
-            })
-            .finally(() => {
-              if (timeoutId) clearTimeout(timeoutId);
-              heartbeatWritePending = false;
-            });
-        }
-      }, SESSION_POLICY.heartbeatMs);
-    };
-
-    // Promotes a (verified) Firebase user to an active app session.
+    // Firebase Authentication owns sign-in; Firestore stores the user profile.
     const activate = async (firebaseUser: User) => {
       stopPolling();
       const token = await firebaseUser.getIdTokenResult();
       claimAdmin = token.claims.admin === true;
       setVerificationEmail(null);
-      localSignOutRef.current = false;
-      endingRef.current = false;
-      sessionReadyRef.current = false;
-      try {
-        const ready = await ensureSession(firebaseUser);
-        if (!ready) return;
-      } catch (error) {
-        console.error('Session governance could not be applied:', error);
-        forceSignOut('Could not verify your session. Please check your connection and sign in again.');
-        return;
-      }
-      if (endingRef.current) return;
-      emit(firebaseUser);
-      startHeartbeat();
-
-      // Firestore admin registry: creating admin/{uid} in the Firebase Console
-      // grants admin access without any script; deleting it revokes instantly.
-      // Clients can never write to the admin collection (rules: isAdmin only).
       const db = getFirestoreClient();
       if (db) {
+        const profileRef = doc(db, 'users', firebaseUser.uid);
+        let profile: Record<string, unknown> = {};
+        try {
+          let profileSnapshot = await getDoc(profileRef);
+          if (!profileSnapshot.exists()) {
+            await setDoc(profileRef, {
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName,
+              photoURL: firebaseUser.photoURL,
+              updatedAt: serverTimestamp(),
+            }, { merge: true });
+            profileSnapshot = await getDoc(profileRef);
+          }
+          profile = profileSnapshot.data() ?? {};
+        } catch (error) {
+          console.error('Could not load the Firestore user profile:', error);
+        }
+
+        emit(firebaseUser, profile);
+        unsubProfile?.();
+        unsubProfile = onSnapshot(profileRef, (snapshot) => {
+          profile = snapshot.data() ?? {};
+          emit(firebaseUser, profile);
+        }, (error) => {
+          console.error('Could not monitor the Firestore user profile:', error);
+        });
+
         unsubAdminDoc?.();
         unsubAdminDoc = onSnapshot(doc(db, 'admin', firebaseUser.uid), (snapshot) => {
           registryAdmin = snapshot.exists();
-          emit(firebaseUser);
-        }, () => { registryAdmin = false; emit(firebaseUser); });
+          emit(firebaseUser, profile);
+        }, (error) => {
+          console.error('Could not load the Firebase admin registry:', error);
+          registryAdmin = false;
+          emit(firebaseUser, profile);
+        });
+      } else {
+        emit(firebaseUser);
       }
     };
     activateRef.current = activate;
@@ -340,24 +151,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribeAuth = onIdTokenChanged(auth, (firebaseUser) => {
       unsubAdminDoc?.();
       unsubAdminDoc = null;
+      unsubProfile?.();
+      unsubProfile = null;
       stopPolling();
-      clearSessionWatch();
-      stopHeartbeat();
       claimAdmin = false;
       registryAdmin = false;
 
       if (!firebaseUser) {
-        // Session records are server-managed; if Firebase ends an auth session
-        // unexpectedly, it naturally expires at its idle/absolute limit.
-        localSignOutRef.current = false;
-        bootstrappedUid = null;
         setUser(null);
         setVerificationEmail(null);
         setLoading(false);
-        sessionReadyRef.current = false;
-        sessionRefRef.current = null;
-        expiresAtRef.current = 0;
-        lastHeartbeatAtRef.current = 0;
         return;
       }
 
@@ -373,22 +176,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         pollTimer = setInterval(() => {
           firebaseUser.reload().then(async () => {
             if (firebaseUser.emailVerified) await activate(firebaseUser);
-          }).catch(() => { /* transient network error — keep polling */ });
+          }).catch((error) => {
+            console.warn('Could not refresh email verification status:', error);
+          });
         }, 4000);
         return;
       }
 
-      void activate(firebaseUser);
+      void activate(firebaseUser).catch((error) => {
+        console.error('Could not activate the Firebase user:', error);
+        emit(firebaseUser);
+      });
     });
 
-    return () => { unsubscribeAuth(); unsubAdminDoc?.(); clearSessionWatch(); stopHeartbeat(); stopPolling(); activateRef.current = null; };
+    return () => {
+      unsubscribeAuth();
+      unsubAdminDoc?.();
+      unsubProfile?.();
+      stopPolling();
+      activateRef.current = null;
+    };
   }, []);
 
   // ── Signed-out routing — the ONE place that decides where signing out lands ──
-  // Every way a session can end funnels through the auth listener above:
-  // the navbar's "Sign out", an idle timeout, an expiry, a revoke from another
-  // device, an admin action, or a password reset performed elsewhere. All of
-  // them surface here as `loading === false && user === null`, so this single
+  // Firebase Auth sign-out and password-reset events surface here as
+  // `loading === false && user === null`, so this single
   // guard sends the visitor home from ANY protected page.
   //
   // Pages must not add their own auth redirects. Duplicated redirects compete
@@ -448,19 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOutFn = useCallback(async () => {
-    // Revoke THIS device's server-managed session before signing out.
-    localSignOutRef.current = true;
-    endingRef.current = false;
     const auth = getAuthClient();
-    const currentUser = auth?.currentUser;
-    if (currentUser && sessionReadyRef.current) {
-      try {
-        await requestSessionAction(currentUser, 'revoke');
-      } catch (error) {
-        console.error('Could not revoke the app session:', error);
-        toast.warning('You signed out, but the server could not revoke this session immediately.');
-      }
-    }
     if (auth) await firebaseSignOut(auth);
   }, []);
 
