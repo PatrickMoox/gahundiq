@@ -56,6 +56,10 @@ const AuthContext = createContext<AuthContextType>({
  */
 export const PROTECTED_ROUTE_PREFIXES = ['/dashboard', '/events', '/reports', '/admin'] as const;
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 /** True when `pathname` is inside a signed-in area (exact prefix or nested). */
 export function isProtectedPath(pathname: string | null | undefined): boolean {
   if (!pathname) return false;
@@ -101,7 +105,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Firebase Authentication owns sign-in; Firestore stores the user profile.
     const activate = async (firebaseUser: User) => {
       stopPolling();
-      const token = await firebaseUser.getIdTokenResult();
+      let token = await firebaseUser.getIdTokenResult();
+      if (token.claims.email_verified !== firebaseUser.emailVerified) {
+        // Firestore rules authorize from the ID-token claim, not user metadata.
+        token = await firebaseUser.getIdTokenResult(true);
+      }
       claimAdmin = token.claims.admin === true;
       setVerificationEmail(null);
       const db = getFirestoreClient();
@@ -222,13 +230,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     const auth = getAuthClient();
     if (!auth) throw new Error('Firebase Authentication is not configured.');
-    await signInWithEmailAndPassword(auth, email.trim(), password);
+    await signInWithEmailAndPassword(auth, normalizeEmail(email), password);
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, name: string, continueUrl?: string) => {
     const auth = getAuthClient();
     if (!auth) throw new Error('Firebase Authentication is not configured.');
-    const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    const result = await createUserWithEmailAndPassword(auth, normalizeEmail(email), password);
     await updateProfile(result.user, { displayName: name.trim() });
     // Require email verification before the account can be used. The
     // verification screen offers a resend button, so a failed send here is
@@ -267,7 +275,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const resetPassword = useCallback(async (email: string) => {
     const auth = getAuthClient();
     if (!auth) throw new Error('Firebase Authentication is not configured.');
-    await sendPasswordResetEmail(auth, email.trim());
+    await sendPasswordResetEmail(auth, normalizeEmail(email));
   }, []);
 
   const resendVerificationEmail = useCallback(async (continueUrl?: string) => {
