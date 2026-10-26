@@ -91,6 +91,236 @@ service cloud.firestore {
           || isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget'));
     }
 
+    function planningItemLimit(collectionName) {
+      return collectionName == 'budget' ? 5
+        : collectionName == 'vendors' ? 5
+        : collectionName == 'timeline' ? 5
+        : 10;
+    }
+
+    function canWritePlanningSection(eventId, collectionName) {
+      return isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, collectionName);
+    }
+
+    function validPlanningUsageIncrement(eventId, collectionName, recordId) {
+      let eventBefore = eventDoc(eventId).data;
+      let eventAfter = getAfter(/databases/$(database)/documents/events/$(eventId)).data;
+      let usageBefore = eventBefore.get('_planningUsage', {});
+      let usageAfter = eventAfter.get('_planningUsage', {});
+      let previousCount = usageBefore.get(collectionName, -1);
+      let nextCount = usageAfter.get(collectionName, -1);
+      let write = eventAfter.get('_planningWrite', {});
+      return previousCount is int
+        && nextCount is int
+        && nextCount == previousCount + 1
+        && (eventBefore.get('tier', 'free') == 'premium'
+          || nextCount <= planningItemLimit(collectionName))
+        && write.keys().hasOnly(['collection', 'itemId', 'actorId'])
+        && write.get('collection', '') == collectionName
+        && write.get('itemId', '') == recordId
+        && write.get('actorId', '') == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/events/$(eventId)/$(collectionName)/$(recordId));
+    }
+
+    function validPlanningUsageItemLink(eventId, collectionName, recordId) {
+      let itemPath = /databases/$(database)/documents/events/$(eventId)/$(collectionName)/$(recordId);
+      return !exists(itemPath)
+        && existsAfter(itemPath)
+        && getAfter(itemPath).data.get('eventId', '') == eventId;
+    }
+
+    function validPlanningUsageUpdate(eventId) {
+      let write = request.resource.data.get('_planningWrite', {});
+      let collectionName = write.get('collection', '');
+      let recordId = write.get('itemId', '');
+      let usageBefore = resource.data.get('_planningUsage', {});
+      let usageAfter = request.resource.data.get('_planningUsage', {});
+      return signedIn()
+        && collectionName in ['budget', 'vendors', 'timeline', 'tasks']
+        && canWritePlanningSection(eventId, collectionName)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['_planningUsage', '_planningWrite'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasAll(['_planningUsage', '_planningWrite'])
+        && usageAfter.diff(usageBefore).affectedKeys().hasOnly([collectionName])
+        && usageAfter.diff(usageBefore).affectedKeys().hasAll([collectionName])
+        && usageBefore.get(collectionName, -1) is int
+        && usageAfter.get(collectionName, -1) == usageBefore.get(collectionName, -1) + 1
+        && (resource.data.get('tier', 'free') == 'premium'
+          || usageAfter.get(collectionName, -1) <= planningItemLimit(collectionName))
+        && write.keys().hasOnly(['collection', 'itemId', 'actorId'])
+        && write.keys().hasAll(['collection', 'itemId', 'actorId'])
+        && write.get('actorId', '') == request.auth.uid
+        && write.get('itemId', '') is string
+        && write.get('itemId', '').size() > 0
+        && validPlanningUsageItemLink(eventId, collectionName, recordId);
+    }
+
+    function validPlanningLinks(eventId) {
+      let data = request.resource.data;
+      return (data.get('vendorId', null) == null
+          || (data.vendorId is string
+            && exists(/databases/$(database)/documents/events/$(eventId)/vendors/$(data.vendorId))
+            && get(/databases/$(database)/documents/events/$(eventId)/vendors/$(data.vendorId)).data.eventId == eventId
+            && (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors'))))
+        && (data.get('budgetItemId', null) == null
+          || (data.budgetItemId is string
+            && exists(/databases/$(database)/documents/events/$(eventId)/budget/$(data.budgetItemId))
+            && get(/databases/$(database)/documents/events/$(eventId)/budget/$(data.budgetItemId)).data.eventId == eventId
+            && (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget')));
+    }
+
+    function validPlanningItem(eventId, collectionName) {
+      let data = request.resource.data;
+      let commonFields = ['eventId', 'createdAt', 'updatedAt'];
+      return data.get('eventId', '') == eventId
+        && data.get('createdAt', null) is timestamp
+        && data.get('updatedAt', null) is timestamp
+        && (collectionName == 'budget'
+          ? data.keys().hasOnly(commonFields.concat([
+              'category', 'name', 'estimatedCost', 'actualCost', 'depositPaid',
+              'balanceDue', 'isPaid', 'dueDate', 'vendorId', 'notes'
+            ]))
+            && data.keys().hasAll([
+              'category', 'name', 'estimatedCost', 'actualCost', 'depositPaid',
+              'balanceDue', 'isPaid'
+            ])
+            && data.category is string
+            && data.name is string && data.name.size() > 0
+            && data.estimatedCost is number && data.estimatedCost >= 0
+            && data.actualCost is number && data.actualCost >= 0
+            && data.depositPaid is number && data.depositPaid >= 0
+            && data.depositPaid <= data.actualCost
+            && data.balanceDue is number
+            && data.isPaid is bool
+            && data.balanceDue == (data.isPaid ? 0 : data.actualCost - data.depositPaid)
+            && (!('dueDate' in data) || data.dueDate == null || data.dueDate is timestamp)
+            && (!('notes' in data) || data.notes is string)
+          : true)
+        && (collectionName == 'vendors'
+          ? data.keys().hasOnly(commonFields.concat([
+              'category', 'name', 'contactName', 'phone', 'email', 'website',
+              'arrivalTime', 'totalAmount', 'depositPaid', 'notes'
+            ]))
+            && data.keys().hasAll([
+              'category', 'name', 'contactName', 'phone', 'email',
+              'totalAmount', 'depositPaid'
+            ])
+            && data.category in [
+              'Photographer', 'Videographer', 'DJ', 'Caterer', 'Florist',
+              'Officiant', 'Venue', 'Hair & Makeup', 'Transportation', 'Other'
+            ]
+            && data.name is string && data.name.size() > 0
+            && data.contactName is string
+            && data.phone is string
+            && data.email is string
+            && data.totalAmount is number && data.totalAmount >= 0
+            && data.depositPaid is number && data.depositPaid >= 0
+            && data.depositPaid <= data.totalAmount
+            && (!('website' in data) || data.website is string)
+            && (!('arrivalTime' in data) || data.arrivalTime is string)
+            && (!('notes' in data) || data.notes is string)
+          : true)
+        && (collectionName == 'timeline'
+          ? data.keys().hasOnly(commonFields.concat([
+              'track', 'startTime', 'endTime', 'title', 'description',
+              'assignedTo', 'vendorId', 'budgetItemId', 'color', 'status', 'order'
+            ]))
+            && data.keys().hasAll([
+              'track', 'startTime', 'endTime', 'title', 'color', 'status', 'order'
+            ])
+            && data.track is string
+            && data.startTime is string
+            && data.endTime is string
+            && data.title is string && data.title.size() > 0
+            && (!('description' in data) || data.description is string)
+            && (!('assignedTo' in data) || data.assignedTo is string)
+            && data.color is string
+            && data.status in ['upcoming', 'active', 'completed']
+            && data.order is number
+          : true)
+        && (collectionName == 'tasks'
+          ? data.keys().hasOnly(commonFields.concat([
+              'title', 'milestone', 'priority', 'category', 'assignedTo',
+              'vendorId', 'budgetItemId', 'description', 'dueDate', 'status'
+            ]))
+            && data.keys().hasAll(['title', 'milestone', 'priority', 'category', 'status'])
+            && data.title is string && data.title.size() > 0
+            && data.milestone in [
+              '12_months', '6_months', '3_months', '1_month',
+              'week_of', 'day_of', 'post_event'
+            ]
+            && data.priority in ['low', 'medium', 'high']
+            && data.category is string
+            && data.status == 'todo'
+            && (!('assignedTo' in data) || data.assignedTo is string)
+            && (!('description' in data) || data.description is string)
+            && (!('dueDate' in data) || data.dueDate == null || data.dueDate is timestamp)
+          : true)
+        && collectionName in ['budget', 'vendors', 'timeline', 'tasks']
+        && validPlanningLinks(eventId);
+    }
+
+    function canWriteGuestSection(eventId) {
+      return isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
+    }
+
+    function validGuestItem() {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'name', 'email', 'dietary', 'isVIP', 'rsvp', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll(['name', 'dietary', 'isVIP', 'rsvp', 'createdAt', 'updatedAt'])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 120
+        && (!('email' in data)
+          || (data.email is string && data.email.size() <= 254))
+        && data.dietary in ['vegetarian', 'vegan', 'gluten-free', 'halal', 'kosher', 'none']
+        && data.isVIP is bool
+        && data.rsvp in ['pending', 'confirmed', 'declined']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validGuestCounterChange(eventId, guestId, operation) {
+      let eventBefore = eventDoc(eventId).data;
+      let eventAfter = getAfter(/databases/$(database)/documents/events/$(eventId)).data;
+      let previousCount = eventBefore.get('_guestUsageCount', -1);
+      let nextCount = eventAfter.get('_guestUsageCount', -1);
+      let write = eventAfter.get('_guestWrite', {});
+      let guestPath = /databases/$(database)/documents/events/$(eventId)/guests/$(guestId);
+      return signedIn()
+        && canWriteGuestSection(eventId)
+        && previousCount is int
+        && previousCount >= 0
+        && nextCount is int
+        && write.keys().hasOnly(['operation', 'guestId', 'actorId'])
+        && write.keys().hasAll(['operation', 'guestId', 'actorId'])
+        && write.get('operation', '') == operation
+        && write.get('guestId', '') == guestId
+        && write.get('actorId', '') == request.auth.uid
+        && ((operation == 'add'
+            && nextCount == previousCount + 1
+            && nextCount <= eventGuestLimit(eventBefore)
+            && !exists(guestPath)
+            && existsAfter(guestPath))
+          || (operation == 'delete'
+            && nextCount == (previousCount > 0 ? previousCount - 1 : 0)
+            && exists(guestPath)
+            && !existsAfter(guestPath)));
+    }
+
+    function validGuestUsageUpdate(eventId) {
+      let write = request.resource.data.get('_guestWrite', {});
+      let guestId = write.get('guestId', '');
+      return signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['_guestUsageCount', '_guestWrite'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasAll(['_guestUsageCount', '_guestWrite'])
+        && write.get('operation', '') in ['add', 'delete']
+        && write.get('guestId', '') is string
+        && write.get('guestId', '').size() > 0
+        && validGuestCounterChange(eventId, guestId, write.get('operation', ''));
+    }
+
     function validCollaboratorSelfJoinAccess(eventId) {
       let access = request.resource.data.get('collaboratorAccess', {});
       let priorAccess = resource.data.get('collaboratorAccess', {});
@@ -182,13 +412,28 @@ service cloud.firestore {
       return eventDoc(eventId).data.tier == 'premium';
     }
 
+    function activePremiumSubscription(userId) {
+      let subscriptionPath = /databases/$(database)/documents/subscriptions/$(userId);
+      return exists(subscriptionPath)
+        && get(subscriptionPath).data.get('tier', '') == 'premium'
+        && !(get(subscriptionPath).data.get('status', '') in ['canceled', 'past_due'])
+        && (get(subscriptionPath).data.get('currentPeriodEnd', null) == null
+          || (get(subscriptionPath).data.get('currentPeriodEnd', null) is timestamp
+            && get(subscriptionPath).data.get('currentPeriodEnd', null) > request.time));
+    }
+
     function eventGuestLimit(data) {
       let subscriptionPath = /databases/$(database)/documents/subscriptions/$(data.hostId);
+      let subscriptionHasGuestLimit = activePremiumSubscription(data.hostId)
+        && get(subscriptionPath).data.get('maxGuests', null) is int
+        && get(subscriptionPath).data.get('maxGuests', 0) > 0;
+      let planLimit = data.tier == 'premium' ? 250 : 25;
+      let subscriptionLimit = subscriptionHasGuestLimit
+        ? get(subscriptionPath).data.maxGuests
+        : planLimit;
       return data.get('guestCapacityOverride', null) is number
         ? data.guestCapacityOverride
-        : (exists(subscriptionPath)
-        ? get(subscriptionPath).data.get('maxGuests', data.tier == 'premium' ? 250 : 25)
-        : (data.tier == 'premium' ? 250 : 25));
+        : subscriptionLimit;
     }
 
     // True when the signed-in user holds a premium entitlement the rules can
@@ -276,6 +521,8 @@ service cloud.firestore {
           'invitationUrl', 'invitationName', 'invitationUploadedAt',
           'onlineInvitationUrl', 'onlineInvitationLabel'
         ]))
+        || validPlanningUsageUpdate(eventId)
+        || validGuestUsageUpdate(eventId)
         // Collaborator SELF-JOIN: an invited user may add ONLY themselves
         // (plus their self-reported display name), and only while a claim doc
         // exists that the rules proved against an accepted invite token. This
@@ -309,9 +556,9 @@ service cloud.firestore {
       // money sections (budget, vendors) are private unless explicitly opened.
       match /timeline/{recordId} {
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
-        // Creates go through the authenticated server endpoint so free-plan
-        // quotas cannot be bypassed by writing directly with the client SDK.
-        allow create: if isAdmin();
+        allow create: if isAdmin() || (canWritePlanningSection(eventId, 'timeline')
+          && validPlanningItem(eventId, 'timeline')
+          && validPlanningUsageIncrement(eventId, 'timeline', recordId));
         allow update: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline'))
           && validPlanningReferences(eventId);
         allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
@@ -319,7 +566,9 @@ service cloud.firestore {
 
       match /vendors/{recordId} {
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors');
-        allow create: if isAdmin();
+        allow create: if isAdmin() || (canWritePlanningSection(eventId, 'vendors')
+          && validPlanningItem(eventId, 'vendors')
+          && validPlanningUsageIncrement(eventId, 'vendors', recordId));
         allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors');
       }
 
@@ -330,17 +579,19 @@ service cloud.firestore {
 
       match /tasks/{recordId} {
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
-        allow create: if isAdmin();
+        allow create: if isAdmin() || (canWritePlanningSection(eventId, 'tasks')
+          && validPlanningItem(eventId, 'tasks')
+          && validPlanningUsageIncrement(eventId, 'tasks', recordId));
         allow update: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks'))
           && validPlanningReferences(eventId);
         allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
       }
 
       match /budget/{recordId} {
-        // Budget is available on free plans up to the item cap, so item
-        // creation is server-mediated rather than premium-only.
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget');
-        allow create: if isAdmin();
+        allow create: if isAdmin() || (canWritePlanningSection(eventId, 'budget')
+          && validPlanningItem(eventId, 'budget')
+          && validPlanningUsageIncrement(eventId, 'budget', recordId));
         allow update: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget'))
           && validPlanningReferences(eventId);
         allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget');
@@ -348,8 +599,12 @@ service cloud.firestore {
 
       match /guests/{recordId} {
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
-        allow create: if isAdmin();
-        allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
+        allow create: if isAdmin() || (canWriteGuestSection(eventId)
+          && validGuestItem()
+          && validGuestCounterChange(eventId, recordId, 'add'));
+        allow update: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
+        allow delete: if isAdmin() || (canWriteGuestSection(eventId)
+          && validGuestCounterChange(eventId, recordId, 'delete'));
       }
 
       // Digital invitations: token-keyed, guest-facing. The 40-char token IS

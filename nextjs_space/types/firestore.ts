@@ -58,6 +58,10 @@ export interface EventData {
    */
   collaboratorAccess?: Record<string, CollaboratorAccess>;
   tier: Tier;
+  /** Trusted item-creation usage counters used by Firestore rules. */
+  _planningUsage?: Partial<Record<'budget' | 'vendors' | 'timeline' | 'tasks', number>>;
+  /** Guest roster count maintained atomically with guest records. */
+  _guestUsageCount?: number;
   /** ISO 4217 code chosen at event creation (auto-detected, manually overridable). */
   currency?: CurrencyCode;
   guestCount: number;

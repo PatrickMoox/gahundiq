@@ -166,7 +166,8 @@ export function BudgetTab({ eventId, event, vendors, canLinkVendors }: { eventId
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ category: '', name: '', estimatedCost: 0, actualCost: 0, depositPaid: 0, isPaid: false, vendorId: '' });
   const itemLimit = event ? getPlanningItemLimit(event, 'budget') : FREE_LIMITS.budgetItems;
-  const limitReached = itemLimit !== null && (items?.length ?? 0) >= itemLimit;
+  const itemUsage = event?._planningUsage?.budget ?? (items?.length ?? 0);
+  const limitReached = itemLimit !== null && itemUsage >= itemLimit;
 
   const totals = useMemo(() => {
     const est = (items ?? []).reduce((s: number, i: BudgetItem) => s + (i?.estimatedCost ?? 0), 0);
@@ -283,7 +284,7 @@ export function BudgetTab({ eventId, event, vendors, canLinkVendors }: { eventId
     const validRows = csvRows.filter((row) => !row.error || row.retryable);
     if (validRows.length === 0 || importing) return;
     setImporting(true);
-    const failedRowNumbers = new Set<number>();
+    const failedRows = new Map<number, string>();
     let importedCount = 0;
 
     for (const row of validRows) {
@@ -301,21 +302,25 @@ export function BudgetTab({ eventId, event, vendors, canLinkVendors }: { eventId
           notes: row.notes,
         });
         importedCount += 1;
-      } catch {
-        failedRowNumbers.add(row.rowNumber);
+      } catch (error) {
+        failedRows.set(
+          row.rowNumber,
+          error instanceof Error ? error.message : 'Could not save this row. Please try again.',
+        );
       }
     }
 
     setImporting(false);
-    if (failedRowNumbers.size > 0) {
+    if (failedRows.size > 0) {
       setCsvRows((rows) => rows.flatMap((row) => {
-        if (failedRowNumbers.has(row.rowNumber)) {
-          return [{ ...row, error: 'Could not save this row. Check your connection and retry.', retryable: true }];
+        const error = failedRows.get(row.rowNumber);
+        if (error) {
+          return [{ ...row, error, retryable: true }];
         }
         if (validRows.some((validRow) => validRow.rowNumber === row.rowNumber)) return [];
         return row.error ? [row] : [];
       }));
-      toast.error(`${importedCount} item${importedCount === 1 ? '' : 's'} imported; ${failedRowNumbers.size} could not be saved. Only the failed rows remain for retry.`);
+      toast.error(`${importedCount} item${importedCount === 1 ? '' : 's'} imported; ${failedRows.size} could not be saved. Review the row errors and retry.`);
       return;
     }
 
@@ -389,7 +394,7 @@ export function BudgetTab({ eventId, event, vendors, canLinkVendors }: { eventId
       <div className="mb-3 mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="font-display text-lg font-semibold">Budget Items</h3>
-          {itemLimit !== null && <p className="text-xs text-muted-foreground">{items?.length ?? 0} of {itemLimit} free-plan items used</p>}
+          {itemLimit !== null && <p className="text-xs text-muted-foreground">{itemUsage} of {itemLimit} free-plan items used</p>}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1"><Download className="h-3.5 w-3.5" /> CSV</Button>

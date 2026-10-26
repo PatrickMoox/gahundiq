@@ -25,7 +25,11 @@ through **capability links** and never need an account.
 ## Architecture — read this before changing anything
 
 1. **Most data access happens in the browser** through the Firebase web SDK.
-   Event creation and selected guest/planning operations use server API routes.
+   Budget, vendor, timeline, and task creation use Firestore client
+   transactions with quota and collaborator checks enforced by
+   `firestore.rules`; guest creation uses the same client/rules model.
+   Event creation, guest removal, and invitation broadcasts use server API
+   routes.
    The **security boundary is `firestore.rules` + `storage.rules`** for client
    access, and explicit ID-token verification plus server-side authorization
    checks for API operations—not the UI.
@@ -33,8 +37,9 @@ through **capability links** and never need an account.
    Firebase Auth ID tokens and use Firebase Admin for privileged Firestore
    operations.
 3. Browser sign-in uses Firebase Authentication directly; user profile data is
-   stored in `users/{uid}`. The Admin SDK is not part of the login flow, but
-   production API routes need server-side Firebase Admin credentials.
+   stored in `users/{uid}`. The Admin SDK is not part of the login flow or
+   planning-item or guest creation, but event, guest-removal, and broadcast API
+   routes need server-side Firebase Admin credentials.
 4. **Admin access is a custom claim** (`request.auth.token.admin == true`),
    granted by `npx tsx scripts/set-admin-claim.ts`; the Firestore admin
    registry is also supported for bootstrapping and console role management.
@@ -138,13 +143,31 @@ features just stay empty. Handy for pure UI work without credentials.
 | --- | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | in production | OG metadata, `sitemap.xml`, `robots.txt`. Falls back to `http://localhost:3000`. |
 | `NEXT_PUBLIC_FIREBASE_*` (8) | yes | Public web config — see `.env.example`. |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | yes in production | Server-only Firebase Admin service-account JSON, required by event API routes (not browser login). Add as a secret environment variable; never prefix with `NEXT_PUBLIC_`. Locally, save the key as `scripts/serviceAccountKey.json` (gitignored), set `GOOGLE_APPLICATION_CREDENTIALS` to its path, or configure Google ADC with `gcloud auth application-default login`. |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | yes in production | Server-only Firebase Admin service-account JSON, required by event, guest-removal, and invitation-broadcast API routes (not browser planning-item or guest creation). Add as a secret environment variable; never prefix with `NEXT_PUBLIC_`. Locally, save the key as `scripts/serviceAccountKey.json` (gitignored), set `GOOGLE_APPLICATION_CREDENTIALS` to its path, or configure Google ADC with `gcloud auth application-default login`. |
 | `SERVICE_ACCOUNT_KEY_PATH` | no | Admin-claim ops script only. Unset → `scripts/serviceAccountKey.json` (gitignored). |
 | `STRIPE_*`, `NEXT_PUBLIC_STRIPE_*`, `TWILIO_*`, `GEMINI_API_KEY` | — | **Not implemented.** No code reads them; leave empty. |
 
 `NEXT_DIST_DIR` can redirect the build output, and `next.config.user.json`
 allows boolean `trailingSlash` /
 `skipTrailingSlashRedirect` overrides.
+
+### Item usage counters
+
+Planning-item and guest-roster writes require per-event usage counters. New
+events initialize them automatically. Before deploying client-side writes to
+existing events, deploy the updated Firestore rules and run the one-time
+migration with trusted Firebase Admin credentials:
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS="$PWD/scripts/serviceAccountKey.json" \
+  npx tsx scripts/migrate-planning-usage.ts
+```
+
+The migration counts existing budget, vendor, timeline, task, and guest
+records, preserves any higher stored counter, and does not modify those
+records. Run it from `nextjs_space` and replace the credential path if your
+local key is stored elsewhere. Existing events without counters cannot accept
+these writes until migration completes. Do not commit the service-account key.
 
 ## Conventions
 

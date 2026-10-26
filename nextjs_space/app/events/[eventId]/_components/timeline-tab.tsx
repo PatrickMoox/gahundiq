@@ -43,7 +43,8 @@ export function TimelineTab({
   const [form, setForm] = useState<Omit<TimelineItem, 'id'>>({ ...emptyItem, eventId });
   const [filterTrack, setFilterTrack] = useState<string>('all');
   const itemLimit = getPlanningItemLimit(event, 'timeline');
-  const limitReached = itemLimit !== null && (items?.length ?? 0) >= itemLimit;
+  const itemUsage = event._planningUsage?.timeline ?? (items?.length ?? 0);
+  const limitReached = itemLimit !== null && itemUsage >= itemLimit;
 
   const openAdd = () => {
     if (loading || limitReached) return;
@@ -98,7 +99,7 @@ export function TimelineTab({
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {itemLimit !== null && <span className="text-xs text-muted-foreground">{items?.length ?? 0} of {FREE_LIMITS.timelineItems} free-plan items</span>}
+          {itemLimit !== null && <span className="text-xs text-muted-foreground">{itemUsage} of {FREE_LIMITS.timelineItems} free-plan items</span>}
           <Button onClick={openAdd} disabled={loading || limitReached} className="gap-2" size="sm"><Plus className="h-4 w-4" /> Add Item</Button>
           {limitReached && <Button asChild variant="outline" size="sm"><Link href="/pricing">Upgrade for more</Link></Button>}
         </div>

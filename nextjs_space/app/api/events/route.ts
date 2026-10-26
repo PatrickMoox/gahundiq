@@ -104,6 +104,8 @@ export async function POST(request: Request) {
         venue,
         guestCount,
         tier,
+        _planningUsage: { budget: 0, vendors: 0, timeline: 0, tasks: 0 },
+        _guestUsageCount: 0,
         currency,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),

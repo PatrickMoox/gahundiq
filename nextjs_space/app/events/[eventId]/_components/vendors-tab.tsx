@@ -47,7 +47,8 @@ export function VendorsTab({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<Vendor, 'id' | 'createdAt'>>({ ...emptyVendor, eventId });
   const itemLimit = event ? getPlanningItemLimit(event, 'vendors') : FREE_LIMITS.vendors;
-  const limitReached = itemLimit !== null && (vendors?.length ?? 0) >= itemLimit;
+  const itemUsage = event?._planningUsage?.vendors ?? (vendors?.length ?? 0);
+  const limitReached = itemLimit !== null && itemUsage >= itemLimit;
 
   const openAdd = () => {
     if (loading || limitReached) return;
@@ -168,7 +169,7 @@ export function VendorsTab({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="font-display text-lg font-semibold">Vendors ({vendors?.length ?? 0})</h3>
-          {itemLimit !== null && <p className="text-xs text-muted-foreground">{vendors?.length ?? 0} of {FREE_LIMITS.vendors} free-plan vendors</p>}
+          {itemLimit !== null && <p className="text-xs text-muted-foreground">{itemUsage} of {FREE_LIMITS.vendors} free-plan vendors</p>}
         </div>
         <div className="flex gap-2">
           <Button onClick={openAdd} disabled={loading || limitReached} size="sm" className="gap-2"><Plus className="h-4 w-4" /> Add Vendor</Button>
