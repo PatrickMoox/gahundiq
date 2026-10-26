@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    agentUpgrade: 'security',
+  },
   distDir: process.env.NEXT_DIST_DIR || '.next',
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
