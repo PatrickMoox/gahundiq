@@ -165,7 +165,7 @@ service cloud.firestore {
           || (data.budgetItemId is string
             && exists(/databases/$(database)/documents/events/$(eventId)/budget/$(data.budgetItemId))
             && get(/databases/$(database)/documents/events/$(eventId)/budget/$(data.budgetItemId)).data.eventId == eventId
-            && (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget')));
+            && (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget'))));
     }
 
     function validPlanningItem(eventId, collectionName) {
