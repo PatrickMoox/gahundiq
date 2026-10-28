@@ -122,6 +122,14 @@ service cloud.firestore {
         && existsAfter(/databases/$(database)/documents/events/$(eventId)/$(collectionName)/$(recordId));
     }
 
+    function premiumEventMissingPlanningUsage(eventId, collectionName) {
+      let eventData = eventDoc(eventId).data;
+      let usage = eventData.get('_planningUsage', {});
+      let count = usage.get(collectionName, -1);
+      return eventData.get('tier', 'free') == 'premium'
+        && (!(count is int) || count < 0);
+    }
+
     function validPlanningUsageItemLink(eventId, collectionName, recordId) {
       let itemPath = /databases/$(database)/documents/events/$(eventId)/$(collectionName)/$(recordId);
       return !exists(itemPath)
@@ -565,7 +573,8 @@ service cloud.firestore {
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
         allow create: if isAdmin() || (canWritePlanningSection(eventId, 'timeline')
           && validPlanningItem(eventId, 'timeline')
-          && validPlanningUsageIncrement(eventId, 'timeline', recordId));
+          && (validPlanningUsageIncrement(eventId, 'timeline', recordId)
+            || premiumEventMissingPlanningUsage(eventId, 'timeline')));
         allow update: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline'))
           && validPlanningReferences(eventId);
         allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'timeline');
@@ -575,7 +584,8 @@ service cloud.firestore {
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors');
         allow create: if isAdmin() || (canWritePlanningSection(eventId, 'vendors')
           && validPlanningItem(eventId, 'vendors')
-          && validPlanningUsageIncrement(eventId, 'vendors', recordId));
+          && (validPlanningUsageIncrement(eventId, 'vendors', recordId)
+            || premiumEventMissingPlanningUsage(eventId, 'vendors')));
         allow update, delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'vendors');
       }
 
@@ -588,7 +598,8 @@ service cloud.firestore {
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
         allow create: if isAdmin() || (canWritePlanningSection(eventId, 'tasks')
           && validPlanningItem(eventId, 'tasks')
-          && validPlanningUsageIncrement(eventId, 'tasks', recordId));
+          && (validPlanningUsageIncrement(eventId, 'tasks', recordId)
+            || premiumEventMissingPlanningUsage(eventId, 'tasks')));
         allow update: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks'))
           && validPlanningReferences(eventId);
         allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'tasks');
@@ -598,7 +609,8 @@ service cloud.firestore {
         allow read: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget');
         allow create: if isAdmin() || (canWritePlanningSection(eventId, 'budget')
           && validPlanningItem(eventId, 'budget')
-          && validPlanningUsageIncrement(eventId, 'budget', recordId));
+          && (validPlanningUsageIncrement(eventId, 'budget', recordId)
+            || premiumEventMissingPlanningUsage(eventId, 'budget')));
         allow update: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget'))
           && validPlanningReferences(eventId);
         allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'budget');

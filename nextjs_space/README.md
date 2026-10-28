@@ -166,8 +166,12 @@ GOOGLE_APPLICATION_CREDENTIALS="$PWD/scripts/serviceAccountKey.json" \
 The migration counts existing budget, vendor, timeline, task, and guest
 records, preserves any higher stored counter, and does not modify those
 records. Run it from `nextjs_space` and replace the credential path if your
-local key is stored elsewhere. Existing events without counters cannot accept
-these writes until migration completes. Do not commit the service-account key.
+local key is stored elsewhere. If an event is missing a planning counter, the
+app now synchronizes that collection securely through the Firebase Admin API
+before retrying the item add. The one-time migration is still recommended to
+initialize all existing counters before launch; run it before changing premium
+events to free tier so their counters are ready for free-plan enforcement.
+Do not commit the service-account key.
 
 ## Conventions
 

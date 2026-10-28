@@ -16,6 +16,8 @@ function isPlanningCollection(name: string): name is PlanningCollection {
   return name === 'budget' || name === 'vendors' || name === 'timeline' || name === 'tasks';
 }
 
+class PlanningUsageSyncRequired extends Error {}
+
 function useCollection<T extends Record<string, any>>(eventId: string, name: string, enabled = true) {
   const { user } = useAuth();
   const [items, setItems] = useState<T[]>([]);
@@ -57,7 +59,7 @@ function useCollection<T extends Record<string, any>>(eventId: string, name: str
         Object.entries(data).filter(([, value]) => value !== undefined),
       );
 
-      await runTransaction(db, async (transaction) => {
+      const writeItem = () => runTransaction(db, async (transaction) => {
         const eventSnapshot = await transaction.get(eventRef);
         if (!eventSnapshot.exists()) throw new Error('Event not found.');
         const event = eventSnapshot.data() as EventData;
@@ -74,11 +76,14 @@ function useCollection<T extends Record<string, any>>(eventId: string, name: str
         }
 
         const usageCount = event._planningUsage?.[name];
-        if (typeof usageCount !== 'number' || !Number.isInteger(usageCount) || usageCount < 0) {
-          throw new Error('Planning usage needs to be synchronized before adding items. Contact support.');
+        const hasValidUsageCount = typeof usageCount === 'number'
+          && Number.isInteger(usageCount)
+          && usageCount >= 0;
+        if (!hasValidUsageCount && event.tier !== 'premium') {
+          throw new PlanningUsageSyncRequired();
         }
         const itemLimit = getPlanningItemLimit(event, name);
-        if (itemLimit !== null && usageCount >= itemLimit) {
+        if (hasValidUsageCount && itemLimit !== null && usageCount >= itemLimit) {
           throw new Error(`Free plan limit reached: ${itemLimit} ${name} items per event. Upgrade your plan to add more.`);
         }
 
@@ -110,11 +115,44 @@ function useCollection<T extends Record<string, any>>(eventId: string, name: str
           createdAt: now,
           updatedAt: now,
         });
-        transaction.update(eventRef, {
-          [`_planningUsage.${name}`]: usageCount + 1,
-          _planningWrite: { collection: name, itemId: itemRef.id, actorId: user.uid },
-        });
+        if (hasValidUsageCount) {
+          transaction.update(eventRef, {
+            [`_planningUsage.${name}`]: usageCount + 1,
+            _planningWrite: { collection: name, itemId: itemRef.id, actorId: user.uid },
+          });
+        }
       });
+
+      try {
+        await writeItem();
+      } catch (error) {
+        if (!(error instanceof PlanningUsageSyncRequired)) throw error;
+
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/planning-usage`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${idToken}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ collection: name }),
+        });
+        if (!response.ok) {
+          let message = 'Could not synchronize planning usage. Please try again.';
+          try {
+            const result: unknown = await response.json();
+            if (typeof result === 'object' && result !== null
+              && 'message' in result && typeof result.message === 'string') {
+              message = result.message;
+            }
+          } catch {
+            // Keep the explicit synchronization failure if the response is not JSON.
+          }
+          throw new Error(message);
+        }
+
+        await writeItem();
+      }
       return { ...data, id: itemRef.id } as unknown as T;
     }
     if (name === 'guests') {
