@@ -482,6 +482,13 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Let each signed-in user check their own registry membership. The client
+    // listens to this document to resolve registry-based admin roles; limiting
+    // the exception to a single-document get prevents listing other admins.
+    match /admin/{userId} {
+      allow get: if isUser(userId);
+    }
+
     match /admin/{document=**} {
       allow read, write: if isAdmin();
     }
