@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { collection, deleteDoc, deleteField, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 import { useAdminDirectory, type DirectoryUser } from '@/lib/hooks/use-subscription';
-import { getFirestoreClient } from '@/lib/firebase';
+import { getAuthClient, getFirestoreClient } from '@/lib/firebase';
 import { csvEscape } from '@/lib/utils';
 import { Navbar } from '@/components/navbar';
 import { AuthGateShell } from '@/components/auth-gate-shell';
@@ -332,10 +332,18 @@ export function AdminClient() {
   const deleteEventGlobal = async (ev: AdminEventRow) => {
     const db = getFirestoreClient();
     if (!db) return;
-    if (!window.confirm(`Permanently delete "${ev.title}" and all its data (guests, tasks, budget, gifts)? This cannot be undone.`)) return;
+    if (!window.confirm(`Permanently delete "${ev.title}", all its event records, public links and uploaded files? This cannot be undone.`)) return;
     setBusyId(ev.id);
     try {
-      await deleteDoc(doc(db, 'events', ev.id));
+      const currentUser = getAuthClient()?.currentUser;
+      if (!currentUser) throw new Error('Your session is no longer available. Please sign in again.');
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`/api/admin/events/${encodeURIComponent(ev.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json() as { message?: string };
+      if (!response.ok) throw new Error(result.message ?? 'Could not delete the event and its related data.');
       setAllEvents((prev) => prev.filter((e) => e.id !== ev.id));
       setPlatform((p) => ({ ...p, ceremonies: p.ceremonies - 1, premiumEvents: ev.tier === 'premium' ? p.premiumEvents - 1 : p.premiumEvents }));
       toast.success(`Deleted "${ev.title}".`);

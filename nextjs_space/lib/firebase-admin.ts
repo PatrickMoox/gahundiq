@@ -23,9 +23,8 @@ export function getFirebaseAdminApp() {
   }
 
   let serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  const credentialPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
-    || resolve(process.cwd(), 'scripts/serviceAccountKey.json');
-  if (!serviceAccountJson && existsSync(credentialPath)) {
+  const credentialPath = resolve(process.cwd(), 'scripts/serviceAccountKey.json');
+  if (!serviceAccountJson && process.env.NODE_ENV !== 'production' && existsSync(credentialPath)) {
     serviceAccountJson = readFileSync(credentialPath, 'utf8');
   }
 
@@ -65,6 +64,7 @@ export function getFirebaseAdminApp() {
   return initializeApp({
     projectId,
     databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
     serviceAccountId: serviceAccount
       ? undefined
       : process.env.FIREBASE_SERVICE_ACCOUNT_EMAIL,

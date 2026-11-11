@@ -62,6 +62,8 @@ export interface EventData {
   _planningUsage?: Partial<Record<'budget' | 'vendors' | 'timeline' | 'tasks', number>>;
   /** Guest roster count maintained atomically with guest records. */
   _guestUsageCount?: number;
+  /** Invitation count maintained atomically by the trusted invite API. */
+  _inviteUsageCount?: number;
   /** ISO 4217 code chosen at event creation (auto-detected, manually overridable). */
   currency?: CurrencyCode;
   guestCount: number;

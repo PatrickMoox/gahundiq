@@ -149,8 +149,20 @@ export async function DELETE(request: Request, context: { params: Promise<{ even
         const guests = await transaction.get(eventRef.collection('guests'));
         count = guests.size;
       }
+      const invitesSnapshot = await transaction.get(eventRef.collection('invites'));
+      const guestInvites = invitesSnapshot.docs.filter((invite) => invite.data().guestId === guestId);
+      const storedInviteCount = event._inviteUsageCount;
+      const inviteCount = typeof storedInviteCount === 'number'
+        && Number.isInteger(storedInviteCount)
+        && storedInviteCount >= 0
+        ? Math.max(storedInviteCount, invitesSnapshot.size)
+        : invitesSnapshot.size;
       transaction.delete(guestRef);
-      transaction.update(eventRef, { _guestUsageCount: Math.max(0, count - 1) });
+      guestInvites.forEach((invite) => transaction.delete(invite.ref));
+      transaction.update(eventRef, {
+        _guestUsageCount: Math.max(0, count - 1),
+        _inviteUsageCount: Math.max(0, inviteCount - guestInvites.length),
+      });
       return { deleted: true } as const;
     });
     if ('error' in result && result.error) return errorResponse(result.error, result.status ?? 500);

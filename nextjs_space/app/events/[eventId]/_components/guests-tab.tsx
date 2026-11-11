@@ -3,8 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useEventInvites, useGuests } from '@/lib/hooks/use-firestore-data';
-import { doc, setDoc } from 'firebase/firestore';
-import { getFirestoreClient } from '@/lib/firebase';
+import { getAuthClient } from '@/lib/firebase';
 import { effectiveRsvp, rsvpCounts } from '@/lib/rsvp';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,25 +20,6 @@ import { Check, Link2, Mail, Plus, Search, Star, Trash2, Users, X } from 'lucide
 const DIETARY_OPTIONS: DietaryPref[] = ['none', 'vegetarian', 'vegan', 'gluten-free', 'halal', 'kosher'];
 const RSVP_OPTIONS: RsvpStatus[] = ['pending', 'confirmed', 'declined'];
 const EMPTY_FORM = { name: '', email: '', dietary: 'none' as DietaryPref, isVIP: false };
-
-/** URL-safe 40-char capability token for a guest's digital invitation. */
-function generateInviteToken(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  // crypto.getRandomValues is unavailable in non-secure contexts (http://),
-  // so degrade to Math.random rather than crash invite creation.
-  const randomInt = (max: number): number => {
-    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-      // Rejection sampling: 256 % 62 != 0, so raw `byte % 62` would bias the
-      // first 8 alphabet chars. Discard bytes at/above the largest multiple.
-      const limit = Math.floor(256 / max) * max;
-      const buf = new Uint8Array(1);
-      do { crypto.getRandomValues(buf); } while (buf[0] >= limit);
-      return buf[0] % max;
-    }
-    return Math.floor(Math.random() * max);
-  };
-  return Array.from({ length: 40 }, () => chars[randomInt(chars.length)]).join('');
-}
 
 export function GuestsTab({ eventId, event, guestLimit }: { eventId: string; event: EventData; guestLimit?: number }) {
   const { guests, loading, addGuest, updateGuest, deleteGuest } = useGuests(eventId);
@@ -127,26 +107,22 @@ export function GuestsTab({ eventId, event, guestLimit }: { eventId: string; eve
       toast.error(`Your plan includes ${limits.invites} invites. Upgrade for more.`);
       return;
     }
-    const db = getFirestoreClient();
-    if (!db) { toast.error('Firestore is not configured.'); return; }
-    const token = generateInviteToken();
+    const currentUser = getAuthClient()?.currentUser;
+    if (!currentUser) { toast.error('Your session is no longer available. Please sign in again.'); return; }
     setSaving(true);
     try {
-      await setDoc(doc(db, 'events', eventId, 'invites', token), {
-        token,
-        eventId,
-        guestId: guest.id,
-        guestName: guest.name,
-        eventTitle: event.title,
-        eventDate: event.date ?? null,
-        eventVenue: event.venue ?? '',
-        rsvp: 'pending',
-        createdAt: new Date(),
-        respondedAt: null,
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/invites`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guestId: guest.id }),
       });
-      await updateGuest(guest.id, { inviteSentAt: new Date(), inviteToken: token });
+      const result = await response.json() as { token?: string; message?: string };
+      if (!response.ok || !result.token) {
+        throw new Error(result.message ?? 'Could not create the invitation.');
+      }
       try {
-        await navigator.clipboard.writeText(`${window.location.origin}/invite/${eventId}/${token}`);
+        await navigator.clipboard.writeText(`${window.location.origin}/invite/${eventId}/${result.token}`);
         toast.success('Digital invitation created — link copied to clipboard. Send it to your guest.');
       } catch {
         toast.success('Digital invitation created. Open the invite page to copy the link.');

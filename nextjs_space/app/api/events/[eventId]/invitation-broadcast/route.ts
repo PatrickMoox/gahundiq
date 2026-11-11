@@ -1,7 +1,8 @@
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getFirebaseAdminApp } from '@/lib/firebase-admin';
-import { FREE_LIMITS, PAID_LIMITS } from '@/lib/plan-entitlements';
+import { getInvitationLimit } from '@/lib/plan-entitlements';
 import { verifyFirebaseUser } from '@/lib/firebase-user';
+import type { Subscription } from '@/types/firestore';
 
 export const runtime = 'nodejs';
 
@@ -45,11 +46,11 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
       const subscriptionSnapshot = event.hostId
         ? await transaction.get(db.doc(`subscriptions/${event.hostId}`))
         : null;
-      const subscription = subscriptionSnapshot?.data();
-      const baseLimit = event.tier === 'premium' ? PAID_LIMITS.invites : FREE_LIMITS.invites;
-      const maxRecipients = typeof event.invitationCapacityOverride === 'number'
-        ? event.invitationCapacityOverride
-        : typeof subscription?.maxInvites === 'number' ? subscription.maxInvites : baseLimit;
+      const subscription = subscriptionSnapshot?.data() as Subscription | undefined;
+      const maxRecipients = getInvitationLimit({
+        tier: event.tier === 'premium' ? 'premium' : 'free',
+        invitationCapacityOverride: event.invitationCapacityOverride,
+      }, subscription);
       const history = Array.isArray(event.invitationBroadcasts) ? event.invitationBroadcasts : [];
       const usedRecipients = history.reduce((total: number, entry: unknown) => {
         if (!entry || typeof entry !== 'object') return total;

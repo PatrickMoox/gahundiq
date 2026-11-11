@@ -65,9 +65,18 @@ export function getGuestLimit(
 
 export function getInvitationLimit(
   event: Pick<EventData, 'tier' | 'invitationCapacityOverride'>,
-  subscription?: Pick<Subscription, 'maxInvites'> | null,
+  subscription?: Pick<Subscription, 'maxInvites' | 'tier' | 'status' | 'currentPeriodEnd'> | null,
 ): number {
-  return event.invitationCapacityOverride ?? subscription?.maxInvites ?? (event.tier === 'premium' ? PAID_LIMITS.invites : FREE_LIMITS.invites);
+  const subscriptionLimit = subscription && isSubscriptionActive(subscription)
+    && typeof subscription.maxInvites === 'number'
+    && Number.isInteger(subscription.maxInvites)
+    && subscription.maxInvites > 0
+    ? subscription.maxInvites
+    : event.tier === 'premium' ? PAID_LIMITS.invites : FREE_LIMITS.invites;
+  const override = event.invitationCapacityOverride;
+  return typeof override === 'number' && Number.isInteger(override) && override > 0
+    ? override
+    : subscriptionLimit;
 }
 
 /**

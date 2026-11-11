@@ -628,22 +628,18 @@ service cloud.firestore {
 
       // Digital invitations: token-keyed, guest-facing. The 40-char token IS
       // the capability - anyone holding the link can read the invite and
-      // respond (RSVP only); hosts and collaborators with guest access manage
-      // invite records. Invite count is metered by the plan's invite quota.
+      // respond (RSVP only). Trusted API writes enforce the invite quota.
       match /invites/{token} {
         allow get: if isAdmin() || isEventHost(eventId)
           || collaboratorSectionAllowed(eventId, 'guests') || token.size() >= 32;
         allow list: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
-        allow create: if (isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests'))
-          && request.resource.data.token == token
-          && request.resource.data.eventId == eventId
-          && request.resource.data.token.size() >= 32;
+        allow create: if isAdmin();
         allow update: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests')
           || (token.size() >= 32
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rsvp', 'respondedAt'])
             && request.resource.data.rsvp in ['pending', 'confirmed', 'declined']
             && request.resource.data.respondedAt is timestamp);
-        allow delete: if isAdmin() || isEventHost(eventId) || collaboratorSectionAllowed(eventId, 'guests');
+        allow delete: if isAdmin();
       }
 
       // Gift records contain payment and guest data; only hosts/admins or

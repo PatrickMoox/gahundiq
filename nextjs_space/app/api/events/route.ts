@@ -17,6 +17,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isActiveEventDate(value: unknown, today: string): boolean {
+  if (value === null || value === undefined) return true;
+  const date = value instanceof Timestamp
+    ? value.toDate()
+    : value instanceof Date
+      ? value
+      : null;
+  return !date || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) >= today;
+}
+
 export async function POST(request: Request) {
   const user = await verifyFirebaseUser(request);
   if (!user) return errorResponse('Your sign-in token is invalid or expired. Please sign in again.', 401);
@@ -78,7 +88,12 @@ export async function POST(request: Request) {
           : PAID_LIMITS.activeCeremonies)
         : FREE_LIMITS.activeCeremonies;
 
-      if (!admin && ownedEvents.size >= planLimit) {
+      const today = Timestamp.now().toDate().toISOString().slice(0, 10);
+      const activeEventCount = ownedEvents.docs.filter((event) =>
+        isActiveEventDate(event.data().date, today),
+      ).length;
+
+      if (!admin && activeEventCount >= planLimit) {
         return {
           error: `You have reached your limit of ${planLimit} active ${planLimit === 1 ? 'ceremony' : 'ceremonies'}. Collaborator access to another host's ceremony does not use your limit.`,
           status: 409,
@@ -106,6 +121,7 @@ export async function POST(request: Request) {
         tier,
         _planningUsage: { budget: 0, vendors: 0, timeline: 0, tasks: 0 },
         _guestUsageCount: 0,
+        _inviteUsageCount: 0,
         currency,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),

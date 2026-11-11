@@ -406,3 +406,42 @@ lint passed before this pass; fixes are being validated again after the edits.
 - Live OAuth cannot be completed from this workspace because it has no shared
   browser session; Firebase Console provider/domain configuration also cannot
   be changed from source code.
+
+---
+
+# Pass 6 — production-readiness follow-up (2026-11-10)
+
+Changes made after the prior audit:
+
+- Updated the lockfile to patched Next.js and Firebase SDK dependency
+  resolutions, moved `firebase-admin` into runtime dependencies, and added
+  compatible overrides for affected transitive dependencies.
+- Moved digital invitation creation to an authenticated Admin SDK route.
+  Firestore rules now deny direct client creation/deletion of invite documents;
+  capacity is enforced transactionally and guest removal revokes associated
+  invite links.
+- Applied the same active-subscription invitation limit helper to broadcast
+  recording and host UI paths.
+- Counted only undated or not-yet-past events against active-ceremony limits.
+- Added admin-only event deletion that removes Storage files, public capability
+  documents, and event subcollections before reporting success.
+- Added Firebase Storage bucket configuration to the Admin SDK and avoided
+  reading arbitrary credential-file paths during production builds.
+
+### Remaining deployment decision
+
+The application README documents Vercel, while `.github/workflows/deploy.yml`
+attempts Firebase Hosting deployment. Current Firebase documentation says new
+participation in framework-aware Hosting is closed and recommends App Hosting.
+No deployment workflow or hosting config was changed until the project owner
+chooses the intended deployment target.
+
+### Validation
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- Production dependency audit — 0 vulnerabilities after lockfile updates.
+- Firebase rules could not be emulator-compiled because Firebase CLI and Java
+  are unavailable in this workspace.
+- Deployment, Firebase Console configuration, and live event deletion were not
+  exercised; no deployment or live data deletion was performed.

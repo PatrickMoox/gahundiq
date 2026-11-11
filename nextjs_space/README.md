@@ -143,7 +143,7 @@ features just stay empty. Handy for pure UI work without credentials.
 | --- | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | in production | OG metadata, `sitemap.xml`, `robots.txt`. Falls back to `http://localhost:3000`. |
 | `NEXT_PUBLIC_FIREBASE_*` (8) | yes | Public web config — see `.env.example`. |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | yes in production | Server-only Firebase Admin service-account JSON, required by event, guest-removal, and invitation-broadcast API routes (not browser planning-item or guest creation). Add as a secret environment variable; never prefix with `NEXT_PUBLIC_`. Locally, save the key as `scripts/serviceAccountKey.json` (gitignored), set `GOOGLE_APPLICATION_CREDENTIALS` to its path, or configure Google ADC with `gcloud auth application-default login`. |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | yes in production unless the host supplies Application Default Credentials | Server-only Firebase Admin service-account JSON, required by event creation, planning-usage synchronization, guest management, invitation creation/broadcast, and admin event deletion routes. Admin deletion also needs the configured Firebase Storage bucket. Never prefix credentials with `NEXT_PUBLIC_`. Locally, save the key as `scripts/serviceAccountKey.json` (gitignored), set `GOOGLE_APPLICATION_CREDENTIALS` to its path, or configure Google ADC with `gcloud auth application-default login`. |
 | `SERVICE_ACCOUNT_KEY_PATH` | no | Admin-claim ops script only. Unset → `scripts/serviceAccountKey.json` (gitignored). |
 | `STRIPE_*`, `NEXT_PUBLIC_STRIPE_*`, `TWILIO_*`, `GEMINI_API_KEY` | — | **Not implemented.** No code reads them; leave empty. |
 
@@ -173,6 +173,13 @@ initialize all existing counters before launch; run it before changing premium
 events to free tier so their counters are ready for free-plan enforcement.
 Do not commit the service-account key.
 
+Digital invitation links are created through the authenticated Firebase Admin
+API, which enforces the event's invitation capacity and atomically updates the
+guest and event records. Direct client creation or deletion of invite documents
+is denied by Firestore rules; removing a guest through the API also revokes
+their invite links. Platform-admin event deletion uses the Admin SDK to remove
+the event's subcollections, related public-link records, and uploaded files.
+
 ## Conventions
 
 `STYLE_GUIDE.md` is the full reference. Essentials:
@@ -200,9 +207,11 @@ Do not commit the service-account key.
 
 Connect the Git repository to Vercel and deploy with the default Next.js
 framework settings. Add the `NEXT_PUBLIC_FIREBASE_*` variables from
-`.env.example` and set `NEXT_PUBLIC_SITE_URL` to the production URL in the
-Vercel project settings. Vercel will build and deploy on pushes to the
-configured production branch.
+`.env.example`, set `NEXT_PUBLIC_SITE_URL` to the production URL, and configure
+`FIREBASE_SERVICE_ACCOUNT_JSON` as a server-only Vercel environment variable.
+Vercel will build and deploy on pushes to the configured production branch.
+The GitHub Actions workflow validates pull requests and pushes; it does not
+deploy. Configure Vercel's Git integration to publish production changes.
 
 ## Known limitations
 
